@@ -13,56 +13,7 @@
 <title>Y Sweet — מערכת ניהול הזמנות</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700&family=Assistant:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-<!-- Firebase -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, onSnapshot, query, orderBy }
-    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyBI89zzWO7zCBPuE3Ikv2KsG5E1YijqdfA",
-    authDomain: "ysweet-7fe53.firebaseapp.com",
-    projectId: "ysweet-7fe53",
-    storageBucket: "ysweet-7fe53.firebasestorage.app",
-    messagingSenderId: "821747873899",
-    appId: "1:821747873899:web:51096e14def8c68ce0d92e",
-    measurementId: "G-4QQSF5905B"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db  = getFirestore(app);
-  window._db = db;
-
-  // ── helpers ──
-  async function saveDoc(col, id, data) {
-    await setDoc(doc(db, col, String(id)), data);
-  }
-  async function delDoc(col, id) {
-    await deleteDoc(doc(db, col, String(id)));
-  }
-  async function loadCol(col) {
-    const snap = await getDocs(collection(db, col));
-    return snap.docs.map(d => d.data());
-  }
-
-  window._fb = { saveDoc, delDoc, loadCol, db, collection, onSnapshot, query, orderBy };
-
-  // ── load initial data then boot app ──
-  async function boot() {
-    try {
-      const [ords, menu, rems, staples, disposables] = await Promise.all([
-        loadCol('orders'), loadCol('menu'), loadCol('reminders'),
-        loadCol('staples'), loadCol('disposables')
-      ]);
-      window._initData = { ords, menu, rems, staples, disposables };
-    } catch(e) {
-      console.warn('Firebase load error:', e);
-      window._initData = { ords:[], menu:[], rems:[], staples:[], disposables:[] };
-    }
-    window._appReady();
-  }
-  boot();
-</script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700&family=Assistant:wght@300;400;500;600&display=swap');
@@ -227,6 +178,58 @@ textarea{resize:vertical;min-height:50px;}
 .empty{text-align:center;padding:2.5rem 1rem;color:var(--muted);}
 .loading{text-align:center;padding:3rem;color:var(--muted);font-family:var(--serif);font-style:italic;font-size:16px;}
 </style>
+
+<script>
+// ════════════════════════════════════════
+// LOCAL STORAGE DATABASE
+// ════════════════════════════════════════
+const LS = {
+  save(key, data) {
+    try {
+      localStorage.setItem('ysweet_' + key, JSON.stringify(data));
+    } catch(e) { console.warn('LS save error', e); }
+  },
+  load(key, fallback) {
+    try {
+      const d = localStorage.getItem('ysweet_' + key);
+      return d ? JSON.parse(d) : fallback;
+    } catch(e) { return fallback; }
+  },
+  saveArr(key, arr) { this.save(key, arr); },
+  loadArr(key) { return this.load(key, []); }
+};
+
+// expose as window._fb compatible API (no-op for firebase calls)
+window._fb = {
+  saveDoc: async (col, id, data) => {
+    const arr = LS.loadArr(col);
+    const idx = arr.findIndex(x => String(x.id) === String(id));
+    if (idx >= 0) arr[idx] = data; else arr.push(data);
+    LS.saveArr(col, arr);
+  },
+  delDoc: async (col, id) => {
+    const arr = LS.loadArr(col).filter(x => String(x.id) !== String(id));
+    LS.saveArr(col, arr);
+  },
+  loadCol: async (col) => LS.loadArr(col),
+  db: null, collection: null, onSnapshot: null, query: null, orderBy: null
+};
+
+// Boot immediately (no async Firebase needed)
+window._initData = {
+  ords:        LS.loadArr('orders'),
+  menu:        LS.loadArr('menu'),
+  rems:        LS.loadArr('reminders'),
+  staples:     LS.loadArr('staples'),
+  disposables: LS.loadArr('disposables'),
+};
+
+// Call app ready after DOM loads
+document.addEventListener('DOMContentLoaded', () => {
+  window._appReady();
+});
+</script>
+
 </head>
 <body>
 
@@ -628,7 +631,7 @@ function setSyncing(v){
   const dot=document.getElementById('sync-dot');
   const lbl=document.getElementById('sync-label');
   if(dot) dot.className='sync-dot'+(v?' syncing':'');
-  if(lbl) lbl.textContent=v?'מסנכרן...':'מחובר';
+  if(lbl) lbl.textContent=v?'שומר...':'✅ שמור';
 }
 
 // ════════════════════════════════════════════════════════════
