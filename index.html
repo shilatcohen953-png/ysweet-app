@@ -1,13 +1,6 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Y Sweet">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#1A1208">
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icon-192.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Y Sweet — מערכת ניהול הזמנות</title>
@@ -861,6 +854,8 @@ function rO(){
             <button class="btn btns btnwa" onclick="sCnf(${JSON.stringify(o.id)})">📱 אישור</button>
             <button class="btn btns" onclick="vO(${JSON.stringify(o.id)})">פרטים</button>
             <button class="btn btns" onclick="cSt(${JSON.stringify(o.id)})">סטטוס</button>
+            <button class="btn btns" style="background:#E6F1FB;color:#185FA5;border-color:#B5D4F4;" onclick="editOrd(${JSON.stringify(o.id)})">✏️ עריכה</button>
+            <button class="btn btns btnd" onclick="delOrd(${JSON.stringify(o.id)})">🗑</button>
           </div>
         </div>
       </div>
@@ -1384,6 +1379,65 @@ function vO(id){
     </div>
   </div>`);
 }
+
+// ════════════════════════════════════════
+// EDIT & DELETE ORDER
+// ════════════════════════════════════════
+function delOrd(id){
+  const o=ords.find(o=>String(o.id)===String(id));if(!o)return;
+  if(!confirm(`למחוק את ההזמנה של ${o.clientName}?\nפעולה זו לא ניתנת לביטול!`))return;
+  ords=ords.filter(o=>String(o.id)!==String(id));
+  window._fb.delDoc('orders',id);
+  rO();renderCal();toast('🗑 ההזמנה נמחקה');
+}
+
+function editOrd(id){
+  const o=ords.find(o=>String(o.id)===String(id));if(!o)return;
+  // populate new order form with existing data
+  document.getElementById('nn').value=o.clientName||'';
+  document.getElementById('nd').value=o.eventDate||'';
+  document.getElementById('nt').value=o.eventTime||'';
+  document.getElementById('np').value=o.clientPhone||'';
+  document.getElementById('nloc').value=o.eventLocation||'';
+  document.getElementById('ne').value=o.clientEmail||'';
+  document.getElementById('no').value=o.eventNotes||'';
+  document.getElementById('delivery-price').value=o.delivery?.price||0;
+  document.getElementById('delivery-note').value=o.delivery?.note||'';
+
+  // restore services
+  SERVICES_DEF.forEach(s=>{
+    if(o.services?.[s.id]){
+      newSvc[s.id].active=o.services[s.id].active||false;
+      newSvc[s.id].price=o.services[s.id].price||'';
+      newSvc[s.id].note=o.services[s.id].note||'';
+    }
+  });
+
+  // restore items
+  nI={};
+  (o.items||[]).forEach(oi=>{
+    nI[oi.menuId]={
+      qty:oi.qty,
+      variantId:oi.variantId||null,
+      removedIng:oi.removedIng||[],
+      note:oi.note||''
+    };
+  });
+
+  // remove old order (will be re-saved on svOrd)
+  ords=ords.filter(ord=>String(ord.id)!==String(id));
+  window._fb.delDoc('orders',id);
+
+  // navigate to new order page
+  document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(e=>e.classList.remove('active'));
+  document.getElementById('page-new').classList.add('active');
+  document.querySelectorAll('.nb')[2].classList.add('active');
+
+  rNM();
+  toast('✏️ ערוך את ההזמנה ולחץ שמור');
+}
+
 function sCnf(id){
   const o=ords.find(o=>String(o.id)===String(id));if(!o)return;
   const lines=o.items.map(oi=>{
