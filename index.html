@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Y Sweet — מערכת ניהול הזמנות</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700&family=Assistant:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, onSnapshot, query, orderBy }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBI89zzWO7zCBPuE3Ikv2KsG5E1YijqdfA",
+    authDomain: "ysweet-7fe53.firebaseapp.com",
+    projectId: "ysweet-7fe53",
+    storageBucket: "ysweet-7fe53.firebasestorage.app",
+    messagingSenderId: "821747873899",
+    appId: "1:821747873899:web:51096e14def8c68ce0d92e",
+    measurementId: "G-4QQSF5905B"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+  window._db = db;
+
+  // ── helpers ──
+  async function saveDoc(col, id, data) {
+    await setDoc(doc(db, col, String(id)), data);
+  }
+  async function delDoc(col, id) {
+    await deleteDoc(doc(db, col, String(id)));
+  }
+  async function loadCol(col) {
+    const snap = await getDocs(collection(db, col));
+    return snap.docs.map(d => d.data());
+  }
+
+  window._fb = { saveDoc, delDoc, loadCol, db, collection, onSnapshot, query, orderBy };
+
+  // ── load initial data then boot app ──
+  async function boot() {
+    try {
+      const [ords, menu, rems, staples, disposables] = await Promise.all([
+        loadCol('orders'), loadCol('menu'), loadCol('reminders'),
+        loadCol('staples'), loadCol('disposables')
+      ]);
+      window._initData = { ords, menu, rems, staples, disposables };
+    } catch(e) {
+      console.warn('Firebase load error:', e);
+      window._initData = { ords:[], menu:[], rems:[], staples:[], disposables:[] };
+    }
+    window._appReady();
+  }
+  boot();
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700&family=Assistant:wght@300;400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;direction:rtl;}
+:root{
+  --gold:#C9A84C;--gold2:#E8C97A;--gold3:#F5E6C0;--gold4:#8B6914;
+  --dark:#1A1208;--bg:#FAFAF8;--bg2:#F4F0E8;--bg3:#EDE8DC;
+  --text:#1C1C1C;--muted:#6B6560;--border:rgba(0,0,0,0.1);
+  --rad:14px;--radsm:8px;
+  --serif:'Playfair Display',Georgia,serif;--body:'Assistant',sans-serif;
+}
+body{font-family:var(--body);background:var(--bg);color:var(--text);min-height:100vh;}
+.app{max-width:700px;margin:0 auto;padding-bottom:50px;}
+
+/* HEADER */
+.header{background:linear-gradient(160deg,#1A1208,#2C1F08,#1e1609);border-radius:0 0 var(--rad) var(--rad);margin-bottom:16px;box-shadow:0 4px 24px rgba(0,0,0,0.25);}
+.hi{display:flex;align-items:center;gap:14px;padding:14px 18px;}
+.htext{flex:1;}
+.hbrand{font-family:var(--serif);font-size:20px;font-style:italic;color:var(--gold2);}
+.htagline{font-size:11px;color:var(--gold);margin-top:1px;}
+.hsub{font-size:10px;color:var(--gold3);opacity:0.7;margin-top:2px;}
+.gold-line{height:2px;background:linear-gradient(90deg,transparent,var(--gold),var(--gold2),var(--gold),transparent);}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#4CAF50;display:inline-block;margin-right:4px;}
+.sync-dot.syncing{background:var(--gold);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+/* NAV */
+.nav{display:flex;background:#fff;border:0.5px solid var(--border);border-radius:var(--rad);margin:0 10px 16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
+.nb{flex:1;padding:9px 3px;font-size:11px;font-weight:500;background:none;border:none;border-bottom:2.5px solid transparent;cursor:pointer;color:var(--muted);font-family:var(--body);white-space:nowrap;}
+.nb:hover{background:var(--bg2);}
+.nb.active{color:var(--gold4);border-bottom-color:var(--gold);background:var(--gold3);}
+
+.page{display:none;padding:0 10px;}.page.active{display:block;}
+.card{background:#fff;border:0.5px solid var(--border);border-radius:var(--rad);padding:14px 18px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04);}
+.stitle{font-family:var(--serif);font-style:italic;font-size:14px;color:var(--gold4);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.stitle::after{content:'';flex:1;height:0.5px;background:linear-gradient(90deg,var(--gold),transparent);}
+
+.badge{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:500;}
+.bg-g{background:var(--gold3);color:var(--gold4);}
+.bg-b{background:#E6F1FB;color:#185FA5;}
+.bg-v{background:#EAF3DE;color:#2E5A08;}
+.bg-r{background:#FCEBEB;color:#791F1F;}
+
+.btn{padding:7px 14px;border-radius:var(--radsm);border:0.5px solid var(--border);background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:var(--text);font-family:var(--body);transition:all 0.15s;}
+.btn:hover{background:var(--bg2);}
+.btng{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--dark);border:none;font-weight:600;}
+.btng:hover{opacity:0.9;}
+.btns{padding:4px 10px;font-size:12px;}
+.btnwa{background:#25D366;color:#fff;border:none;}
+.btnwa:hover{background:#1da851;}
+.btnml{background:#E6F1FB;color:#185FA5;border-color:#B5D4F4;}
+.btnd{background:#FCEBEB;color:#791F1F;border-color:#F09595;}
+
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.fg{margin-bottom:11px;}
+.fg label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;}
+input,select,textarea{width:100%;padding:8px 11px;border:0.5px solid var(--border);border-radius:var(--radsm);font-size:13px;background:#fff;color:var(--text);font-family:var(--body);}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);}
+textarea{resize:vertical;min-height:50px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+
+/* CALENDAR */
+.cal-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.cal-month{font-family:var(--serif);font-style:italic;font-size:17px;color:var(--gold4);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.cal-head{text-align:center;font-size:10px;font-weight:600;color:var(--muted);padding:4px 0;}
+.cal-day{min-height:54px;border-radius:var(--radsm);padding:4px;background:var(--bg2);border:0.5px solid var(--border);cursor:pointer;position:relative;transition:all 0.15s;}
+.cal-day:hover{border-color:var(--gold);}
+.cal-day.today{border-color:var(--gold);border-width:1.5px;background:var(--gold3);}
+.cal-day.other-month{opacity:0.3;}
+.cal-day.has-orders{background:#EAF3DE;}
+.cal-day.has-reminders{background:#E6F1FB;}
+.cal-day.has-both{background:linear-gradient(135deg,#EAF3DE 50%,#E6F1FB 50%);}
+.cal-num{font-size:11px;font-weight:600;}
+.cal-dot-row{display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;}
+.cal-dot{width:5px;height:5px;border-radius:50%;}
+.cal-dot.order{background:var(--gold);}
+.cal-dot.reminder{background:#E24B4A;}
+.cal-mini{font-size:8px;color:var(--gold4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3;}
+.cal-mini-r{font-size:8px;color:#185FA5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.day-panel{background:#fff;border:0.5px solid var(--gold);border-radius:var(--rad);padding:13px;margin-top:10px;}
+.day-order-item{background:var(--gold3);border-radius:var(--radsm);padding:8px 11px;margin-bottom:6px;border-right:3px solid var(--gold);}
+.day-rem-item{background:#E6F1FB;border-radius:var(--radsm);padding:8px 11px;margin-bottom:6px;border-right:3px solid #185FA5;display:flex;justify-content:space-between;align-items:center;}
+
+/* ORDER CARD */
+.ocard{background:#fff;border:0.5px solid var(--gold);border-radius:var(--rad);margin-bottom:12px;overflow:hidden;box-shadow:0 2px 10px rgba(201,168,76,0.1);}
+.ochead{background:linear-gradient(135deg,#1A1208,#2C1F08);padding:10px 16px;display:flex;justify-content:space-between;align-items:flex-start;}
+.ocname{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--gold2);}
+.ocbody{padding:11px 16px;}
+.octot{font-size:17px;font-weight:700;color:var(--gold4);font-family:var(--serif);}
+.extra-tag{font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:0.5px solid var(--border);}
+
+/* SERVICES */
+.service-row{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:var(--radsm);border:0.5px solid var(--border);background:var(--bg2);margin-bottom:7px;transition:all 0.15s;}
+.service-row.active{border-color:var(--gold);background:var(--gold3);}
+.svc-cb{width:19px;height:19px;border:1.5px solid var(--gold);border-radius:5px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;background:#fff;margin-top:1px;}
+.service-row.active .svc-cb{background:var(--gold);color:#fff;}
+.svc-body{flex:1;}
+.svc-label{font-size:13px;font-weight:500;cursor:pointer;}
+.svc-fields{display:grid;grid-template-columns:100px 1fr;gap:7px;margin-top:7px;}
+.svc-fields input{font-size:12px;padding:5px 8px;}
+
+/* MENU ITEM */
+.mic{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radsm);padding:10px 12px;margin-bottom:8px;}
+.mic.hq{border-color:var(--gold);background:var(--gold3);}
+.min{font-size:13px;font-weight:500;}
+.mip{font-size:12px;color:var(--gold4);font-weight:600;}
+.mii{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5;}
+.ctag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:8px;background:var(--gold3);color:var(--gold4);margin-bottom:2px;}
+.vtag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:8px;background:#E6F1FB;color:#185FA5;margin-right:3px;}
+.qc{display:flex;align-items:center;gap:5px;}
+.qb{width:25px;height:25px;border:1px solid var(--gold);border-radius:50%;background:transparent;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--gold4);}
+.qb:hover{background:var(--gold3);}
+.qn{min-width:20px;text-align:center;font-size:13px;font-weight:600;color:var(--gold4);}
+
+/* SUMMARY */
+.sbox{background:linear-gradient(135deg,#1A1208,#2C1F08);border-radius:var(--radsm);padding:12px 16px;margin-top:8px;}
+.srow{display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--gold3);}
+.stot{font-size:15px;font-weight:600;color:var(--gold2);border-top:0.5px solid var(--gold);margin-top:6px;padding-top:6px;font-family:var(--serif);}
+
+/* SHOPPING */
+.shi{display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:0.5px solid var(--border);font-size:13px;gap:8px;}
+.shi:last-child{border-bottom:none;}
+.shi-src{font-size:10px;color:var(--muted);font-style:italic;margin-top:1px;}
+.shi-qty{font-weight:600;color:var(--gold4);white-space:nowrap;font-size:12px;}
+
+/* CHECKLIST ITEMS (staples, disposables) */
+.chk-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radsm);margin-bottom:5px;background:var(--bg2);border:0.5px solid var(--border);cursor:pointer;}
+.chk-item.chk{background:#FFF3CD;border-color:var(--gold);text-decoration:line-through;color:var(--muted);}
+.chk-cb{width:17px;height:17px;border:1.5px solid var(--gold);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;background:#fff;}
+.chk-item.chk .chk-cb{background:var(--gold);color:#fff;}
+
+/* VARIANT CARD */
+.var-card{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radsm);padding:11px 13px;margin-bottom:8px;}
+.var-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.var-card-name{font-size:13px;font-weight:500;color:var(--gold4);}
+.ing-row{display:flex;gap:5px;align-items:center;margin-bottom:6px;}
+.ing-row input{flex:1;}
+.ing-row .iq{flex:0 0 62px;}
+.ing-row .iu{flex:0 0 72px;}
+.di{background:none;border:none;cursor:pointer;color:#E24B4A;font-size:16px;padding:2px 4px;}
+
+/* SSTEPS */
+.ssteps{display:flex;gap:3px;margin-bottom:10px;}
+.ss{flex:1;text-align:center;font-size:10px;padding:4px 2px;border-radius:var(--radsm);background:var(--bg2);color:var(--muted);}
+.ss.done{background:var(--gold3);color:var(--gold4);}
+.ss.cur{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--dark);}
+
+/* MODAL */
+.mov{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:100;}
+.modal{background:#fff;border:0.5px solid var(--gold);border-radius:var(--rad);padding:20px;width:93%;max-width:520px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);}
+.mtitle{font-family:var(--serif);font-style:italic;font-size:16px;margin-bottom:14px;color:var(--gold4);}
+.cbtn{float:left;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
+.send-preview{background:var(--bg2);border-radius:var(--radsm);padding:11px;font-size:12px;line-height:1.8;white-space:pre-wrap;max-height:220px;overflow-y:auto;border:0.5px solid var(--border);}
+
+/* ALERT */
+.aov{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:200;}
+.abox{background:#fff;border:2px solid var(--gold);border-radius:var(--rad);padding:24px;width:88%;max-width:360px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:pop 0.3s ease;}
+@keyframes pop{from{transform:scale(0.8);opacity:0;}to{transform:scale(1);opacity:1;}}
+
+.empty{text-align:center;padding:2.5rem 1rem;color:var(--muted);}
+.loading{text-align:center;padding:3rem;color:var(--muted);font-family:var(--serif);font-style:italic;font-size:16px;}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;">
+  <svg width="80" height="80" viewBox="0 0 80 80">
+    <defs>
+      <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#E8C97A"/><stop offset="50%" stop-color="#C9A84C"/><stop offset="100%" stop-color="#8B6914"/>
+      </linearGradient>
+    </defs>
+    <circle cx="40" cy="40" r="38" fill="url(#lg)"/>
+    <circle cx="40" cy="40" r="32" fill="#FFFDF5"/>
+    <text x="40" y="53" text-anchor="middle" font-family="Georgia,serif" font-size="46" font-weight="700" font-style="italic" fill="#C9A84C">Y</text>
+  </svg>
+  <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:#8B6914;">Y Sweet מהדרין</div>
+  <div style="font-size:13px;color:#6B6560;">טוען נתונים...</div>
+</div>
+
+<div id="main-app" style="display:none;">
+<div class="app">
+
+<!-- HEADER -->
+<div class="header">
+  <div class="hi">
+    <svg width="62" height="62" viewBox="0 0 62 62" style="flex-shrink:0;">
+      <defs>
+        <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#E8C97A"/><stop offset="40%" stop-color="#C9A84C"/>
+          <stop offset="70%" stop-color="#F0D878"/><stop offset="100%" stop-color="#8B6914"/>
+        </linearGradient>
+        <radialGradient id="bgc" cx="45%" cy="38%" r="65%">
+          <stop offset="0%" stop-color="#FFFDF5"/><stop offset="100%" stop-color="#F5E6C0"/>
+        </radialGradient>
+        <linearGradient id="yg" x1="0%" y1="0%" x2="60%" y2="100%">
+          <stop offset="0%" stop-color="#8B6914"/><stop offset="50%" stop-color="#C9A84C"/><stop offset="100%" stop-color="#7A5C10"/>
+        </linearGradient>
+      </defs>
+      <circle cx="31" cy="31" r="30" fill="url(#rg)"/>
+      <circle cx="31" cy="31" r="26" fill="url(#bgc)"/>
+      <circle cx="31" cy="31" r="22" fill="none" stroke="#C9A84C" stroke-width="0.6" opacity="0.4"/>
+      <text x="31" y="42" text-anchor="middle" font-family="'Playfair Display',Georgia,serif" font-size="36" font-weight="700" font-style="italic" fill="url(#yg)">Y</text>
+      <text x="31" y="51" text-anchor="middle" font-family="Georgia,serif" font-size="6" font-style="italic" letter-spacing="2" fill="#8B6914">sweet</text>
+    </svg>
+    <div class="htext">
+      <div class="hbrand">Y Sweet מהדרין</div>
+      <div class="htagline">יוקרה בטעם ביתי</div>
+      <div class="hsub">קייטרינג חלבי · מגשי אירוח · קינוחים · עיצובי ברים</div>
+    </div>
+    <div style="text-align:left;flex-shrink:0;">
+      <div style="font-size:10px;color:var(--gold3);">יעל כהן</div>
+      <div style="font-size:12px;color:var(--gold2);font-weight:600;">050-4940803</div>
+      <div style="font-size:10px;color:var(--gold3);margin-top:2px;"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">מחובר</span></div>
+    </div>
+  </div>
+  <div class="gold-line"></div>
+</div>
+
+<nav class="nav">
+  <button class="nb active" onclick="gp('cal',this)">📅 לוח שנה</button>
+  <button class="nb" onclick="gp('orders',this)">📋 הזמנות</button>
+  <button class="nb" onclick="gp('new',this)">✦ חדשה</button>
+  <button class="nb" onclick="gp('shop',this)">🛒 קניות</button>
+  <button class="nb" onclick="gp('menu',this)">📖 תפריט</button>
+</nav>
+
+<!-- CALENDAR -->
+<div id="page-cal" class="page active">
+  <div class="card" style="padding:13px;">
+    <div class="cal-nav">
+      <button class="btn btns" onclick="calPrev()">‹</button>
+      <div class="cal-month" id="cal-month-label"></div>
+      <button class="btn btns" onclick="calNext()">›</button>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-head">א'</div><div class="cal-head">ב'</div><div class="cal-head">ג'</div>
+      <div class="cal-head">ד'</div><div class="cal-head">ה'</div><div class="cal-head">ו'</div><div class="cal-head">ש'</div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+  <div class="row" style="gap:12px;padding:0 4px 8px;font-size:11px;color:var(--muted);">
+    <span style="background:#EAF3DE;padding:2px 8px;border-radius:10px;">🟡 הזמנה</span>
+    <span style="background:#E6F1FB;padding:2px 8px;border-radius:10px;">🔵 תזכורת</span>
+  </div>
+  <div id="day-panel" style="display:none;"></div>
+  <div class="card">
+    <div class="stitle">➕ הוסף תזכורת</div>
+    <div class="g2">
+      <div class="fg"><label>תאריך</label><input type="date" id="rem-date"></div>
+      <div class="fg"><label>שעה</label><input type="time" id="rem-time" value="09:00"></div>
+    </div>
+    <div class="fg"><label>תוכן התזכורת</label><input type="text" id="rem-text" placeholder="לדוגמה: להתקשר ללקוח, לקנות מוצרים..."></div>
+    <button class="btn btng" onclick="addReminder()" style="width:100%;">🔔 שמור תזכורת</button>
+  </div>
+</div>
+
+<!-- ORDERS -->
+<div id="page-orders" class="page"><div id="olist"></div></div>
+
+<!-- NEW ORDER -->
+<div id="page-new" class="page">
+  <div class="card">
+    <div class="stitle">פרטי לקוח ואירוע</div>
+    <div class="g2">
+      <div class="fg"><label>שם לקוח</label><input id="nn" type="text" placeholder="שם מלא"></div>
+      <div class="fg"><label>תאריך אירוע</label><input id="nd" type="date"></div>
+      <div class="fg"><label>שעת האירוע</label><input id="nt" type="time"></div>
+      <div class="fg"><label>טלפון</label><input id="np" type="tel" placeholder="05X-XXXXXXX"></div>
+    </div>
+    <div class="fg"><label>מקום האירוע</label><input id="nloc" type="text" placeholder="אולם, כתובת..."></div>
+    <div class="fg"><label>אימייל</label><input id="ne" type="email" placeholder="email@example.com"></div>
+    <div class="fg"><label>סוג אירוע / הערות</label><textarea id="no" placeholder="בר מצווה, חתונה, ברית..."></textarea></div>
+    <div class="row">
+      <button class="btn btnwa btns" onclick="sndM('wa')">📱 שלח תפריט</button>
+      <button class="btn btnml btns" onclick="sndM('ml')">✉️ שלח תפריט</button>
+    </div>
+  </div>
+
+  <!-- שירותי עריכה -->
+  <div class="card">
+    <div class="stitle">שירותים נוספים לאירוע</div>
+    <div id="services-list"></div>
+    <div style="border-top:0.5px solid var(--border);margin-top:10px;padding-top:10px;">
+      <div class="fg"><label>🚚 משלוח — מחיר (₪ | 0 = חינם)</label>
+        <input type="number" id="delivery-price" value="0" min="0" oninput="uS()"></div>
+      <div class="fg"><label>הערת משלוח (עיר / פרטים)</label>
+        <input type="text" id="delivery-note" placeholder="לדוגמה: תל אביב — חינם / נתניה — ₪180"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="stitle">בחירת פריטים</div>
+    <div id="cfilt" class="row" style="margin-bottom:10px;gap:5px;flex-wrap:wrap;"></div>
+    <div id="nmenu"></div>
+  </div>
+
+  <div id="chosen-card" class="card" style="display:none;">
+    <div class="stitle">פריטים שנבחרו — התאמות אישיות</div>
+    <div id="chosen-list"></div>
+  </div>
+
+  <div id="nscard" class="card" style="display:none;">
+    <div class="stitle">סיכום הזמנה</div>
+    <div id="nsum"></div>
+  </div>
+  <div class="row" style="justify-content:flex-end;gap:8px;margin-top:6px;padding-bottom:14px;">
+    <button class="btn" onclick="rNew()">נקה</button>
+    <button class="btn btng" onclick="svOrd()">✦ שמור הזמנה</button>
+  </div>
+</div>
+
+<!-- SHOPPING -->
+<div id="page-shop" class="page">
+  <div class="row" style="margin-bottom:10px;gap:8px;">
+    <div class="fg" style="flex:1;margin:0;"><select id="ssel" onchange="rShop()"><option value="all">כל ההזמנות הפעילות</option></select></div>
+    <button class="btn btnwa" onclick="showSendMod()">📱 שלח</button>
+  </div>
+  <!-- חלק א -->
+  <div class="card"><div class="stitle">📦 מוצרים לפי הזמנות</div><div id="scon"></div></div>
+  <!-- חלק ב -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div style="font-family:var(--serif);font-style:italic;font-size:13px;color:var(--gold4);">🧂 מוצרי יסוד</div>
+      <button class="btn btns" onclick="clrList('staples')">נקה</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">סמן מה שנגמר — יצורף לשליחה</div>
+    <div id="staples-list"></div>
+    <div class="row" style="margin-top:8px;gap:6px;">
+      <input id="new-staple" type="text" placeholder="הוסף מוצר יסוד..." style="flex:1;">
+      <button class="btn btns btng" onclick="addItem('staples')">+ הוסף</button>
+    </div>
+  </div>
+  <!-- חלק ג -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div style="font-family:var(--serif);font-style:italic;font-size:13px;color:var(--gold4);">🍴 חד פעמי וציוד</div>
+      <button class="btn btns" onclick="clrList('disposables')">נקה</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">סמן מה שנגמר — יצורף לשליחה</div>
+    <div id="disposables-list"></div>
+    <div class="row" style="margin-top:8px;gap:6px;">
+      <input id="new-disposable" type="text" placeholder="הוסף פריט חד פעמי..." style="flex:1;">
+      <button class="btn btns btng" onclick="addItem('disposables')">+ הוסף</button>
+    </div>
+  </div>
+</div>
+
+<!-- MENU -->
+<div id="page-menu" class="page">
+  <div class="row" style="justify-content:space-between;margin-bottom:12px;">
+    <div style="font-family:var(--serif);font-style:italic;font-size:16px;color:var(--gold4);">ניהול תפריט</div>
+    <button class="btn btng btns" onclick="showAddItem()">✦ הוסף פריט</button>
+  </div>
+  <div id="mlist"></div>
+</div>
+</div><!-- /app -->
+</div><!-- /main-app -->
+
+<!-- MODAL -->
+<div id="modal" style="display:none;" class="mov" onclick="cMod(event)">
+  <div class="modal" onclick="event.stopPropagation()"><div id="mbody"></div></div>
+</div>
+
+<!-- ALERT -->
+<div id="aov" style="display:none;" class="aov">
+  <div class="abox">
+    <div style="font-size:36px;margin-bottom:10px;">🔔</div>
+    <div style="font-family:var(--serif);font-style:italic;font-size:18px;color:var(--gold4);margin-bottom:6px;">תזכורת!</div>
+    <div id="alert-text" style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5;"></div>
+    <button class="btn btng" style="width:100%;" onclick="document.getElementById('aov').style.display='none'">הבנתי ✓</button>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// DEFAULT DATA — ייטען רק אם Firebase ריק
+// ════════════════════════════════════════════════════════════
+const DEFAULT_MENU = [
+  // סלטים
+  {id:"m1",cat:"סלטים",name:"סלט בטטה וגבינה בולגרית",price:110,unit:"למגש",ing:[{n:"עגבניות",q:5,u:"יח'"},{n:"מלפפונים",q:5,u:"יח'"},{n:"גמבה",q:1,u:"יח'"},{n:"חסה",q:0.5,u:"חבילה"},{n:"בטטה",q:1,u:"יח'"},{n:"גבינה בולגרית",q:200,u:"גרם"}]},
+  {id:"m2",cat:"סלטים",name:"סלט ניקוסי",price:110,unit:"למגש",ing:[{n:"חסה",q:1,u:"חבילה"},{n:"עגבניות",q:4,u:"יח'"},{n:"מלפפונים",q:4,u:"יח'"},{n:"גמבה",q:1,u:"יח'"},{n:"ביצים",q:4,u:"יח'"},{n:"תפוחי אדמה",q:4,u:"יח'"},{n:"מלפפון חמוץ",q:1,u:"צנצנת"}]},
+  {id:"m3",cat:"סלטים",name:"סלט סביח",price:110,unit:"למגש",ing:[{n:"חסה",q:1,u:"חבילה"},{n:"עגבניות",q:5,u:"יח'"},{n:"מלפפונים",q:4,u:"יח'"},{n:"ביצים",q:4,u:"יח'"},{n:"תפוחי אדמה",q:3,u:"יח'"},{n:"חציל",q:2,u:"יח'"}]},
+  {id:"m4",cat:"סלטים",name:"סלט פטריות ואגוזי מלך",price:110,unit:"למגש",ing:[{n:"פטריות שמפניון",q:1,u:"חבילה"},{n:"עגבניות",q:5,u:"יח'"},{n:"מלפפונים",q:5,u:"יח'"},{n:"גמבה",q:1,u:"יח'"},{n:"חסה",q:0.5,u:"חבילה"},{n:"אגוזי מלך",q:100,u:"גרם"},{n:"נבטים",q:1,u:"חבילה"}]},
+  {id:"m5",cat:"סלטים",name:"סלט יווני",price:110,unit:"למגש",ing:[{n:"חסה",q:1,u:"חבילה"},{n:"עגבניות",q:5,u:"יח'"},{n:"מלפפונים",q:5,u:"יח'"},{n:"גמבה",q:1,u:"יח'"},{n:"גבינה בולגרית",q:200,u:"גרם"},{n:"זיתים שחורים",q:1,u:"קופסא"}]},
+  {id:"m6",cat:"סלטים",name:"סלט כרוב אסייאתי",price:110,unit:"למגש",ing:[{n:"כרוב לבן",q:0.5,u:"יח'"},{n:"גזר",q:2,u:"יח'"},{n:"פקאן מסוכר",q:100,u:"גרם"},{n:"חמוציות",q:1,u:"חבילה"},{n:"שומשום",q:1,u:"חבילה"}]},
+  {id:"m7",cat:"סלטים",name:"סלט בורגול עשיר",price:110,unit:"למגש",ing:[{n:"בורגול",q:1,u:"חבילה"},{n:"עגבניות",q:4,u:"יח'"},{n:"מלפפונים",q:3,u:"יח'"},{n:"חמוציות",q:1,u:"חבילה"},{n:"בצל סגול",q:1,u:"יח'"},{n:"אגוזי מלך",q:100,u:"גרם"},{n:"פטרוזיליה",q:1,u:"צרור"}]},
+  {id:"m8",cat:"סלטים",name:"סלט קינואה",price:115,unit:"למגש",ing:[{n:"קינואה",q:1,u:"חבילה"},{n:"עגבניות שרי",q:1,u:"חבילה"},{n:"גמבה",q:1,u:"יח'"},{n:"מלפפונים",q:3,u:"יח'"},{n:"זיתים שחורים",q:1,u:"קופסא"},{n:"גרעיני חמניה",q:1,u:"חבילה"}]},
+  {id:"m9",cat:"סלטים",name:"סלט פסטה קר",price:115,unit:"למגש",ing:[{n:"פסטה",q:1,u:"חבילה"},{n:"ביבי מוצרלה",q:1,u:"חבילה"},{n:"עגבניות שרי",q:1,u:"חבילה"},{n:"זיתים שחורים",q:1,u:"קופסא"},{n:"גמבה",q:1,u:"יח'"}]},
+  {id:"m10",cat:"סלטים",name:"סלט סלומון אסייאתי",price:130,unit:"למגש",ing:[{n:"סלמון",q:300,u:"גרם"},{n:"ירקות עלים",q:1,u:"חבילה"},{n:"נבטים",q:1,u:"חבילה"},{n:"בצל ירוק",q:1,u:"צרור"},{n:"פסטה",q:0.5,u:"חבילה"}]},
+  {id:"m11",cat:"סלטים",name:"סלט ביצים עשיר",price:100,unit:"800 גרם",ing:[{n:"ביצים",q:10,u:"יח'"},{n:"בצל",q:2,u:"יח'"},{n:"בצל ירוק",q:1,u:"צרור"},{n:"מיונז",q:1,u:"צנצנת"}]},
+  {id:"m12",cat:"סלטים",name:"סלט טונה משודרג",price:100,unit:"800 גרם",ing:[{n:"טונה",q:3,u:"קופסא"},{n:"גמבה",q:1,u:"יח'"},{n:"מלפפונים",q:3,u:"יח'"},{n:"מיונז",q:1,u:"צנצנת"}]},
+  {id:"m13",cat:"סלטים",name:"סלט ים תיכוני",price:110,unit:"למגש",ing:[{n:"ירקות עלים",q:1,u:"חבילה"},{n:"עגבניות שרי",q:1,u:"חבילה"},{n:"מלפפונים",q:4,u:"יח'"},{n:"בצל סגול",q:1,u:"יח'"},{n:"גבינה בולגרית",q:200,u:"גרם"},{n:"זיתים שחורים",q:1,u:"קופסא"}]},
+  // פלטות
+  {id:"m20",cat:"פלטות",name:"פלטת סלומון מעושן",price:270,unit:"כ-0.5 קג",ing:[{n:"סלמון מעושן",q:500,u:"גרם"},{n:"חסה",q:1,u:"חבילה"},{n:"זיתים שחורים",q:1,u:"קופסא"},{n:"לימון",q:2,u:"יח'"}]},
+  {id:"m21",cat:"פלטות",name:"פלטת גבינות קטן 30×25",price:200,unit:"מגש",ing:[{n:"גבינה צהובה",q:150,u:"גרם"},{n:"מוצרלה",q:1,u:"חבילה"},{n:"גבינת פטה",q:1,u:"חבילה"},{n:"גבינה בולגרית",q:150,u:"גרם"},{n:"גבינת שמנת",q:1,u:"גביע"},{n:"ביבי מוצרלה",q:1,u:"חבילה"}]},
+  {id:"m22",cat:"פלטות",name:"פלטת גבינות גדול 35×40",price:260,unit:"מגש",ing:[{n:"גבינה צהובה",q:250,u:"גרם"},{n:"מוצרלה",q:2,u:"חבילה"},{n:"גבינת פטה",q:1,u:"חבילה"},{n:"גבינה בולגרית",q:250,u:"גרם"},{n:"גבינת שמנת",q:2,u:"גביע"},{n:"ביבי מוצרלה",q:1,u:"חבילה"}]},
+  {id:"m23",cat:"פלטות",name:"פלטת ירקות קטנה",price:85,unit:"מגש",ing:[{n:"גמבה",q:2,u:"יח'"},{n:"מלפפונים",q:4,u:"יח'"},{n:"גזר",q:3,u:"יח'"},{n:"עגבניות שרי",q:1,u:"חבילה"},{n:"כרובית",q:0.5,u:"יח'"},{n:"זיתים שחורים",q:1,u:"קופסא"},{n:"חמוצים",q:1,u:"צנצנת"}]},
+  {id:"m24",cat:"פלטות",name:"פלטת ירקות גדולה",price:100,unit:"מגש",ing:[{n:"גמבה",q:3,u:"יח'"},{n:"מלפפונים",q:6,u:"יח'"},{n:"גזר",q:5,u:"יח'"},{n:"עגבניות שרי",q:2,u:"חבילה"},{n:"כרובית",q:1,u:"יח'"},{n:"זיתים שחורים",q:1,u:"קופסא"},{n:"חמוצים",q:1,u:"צנצנת"}]},
+  {id:"m25",cat:"פלטות",name:"פלטת אנטיפסטי קטנה",price:100,unit:"מגש",ing:[{n:"עגבניות מיובשות",q:1,u:"צנצנת"},{n:"זיתים שחורים",q:1,u:"קופסא"},{n:"גמבה צלויה",q:1,u:"צנצנת"},{n:"פטריות מושקות",q:1,u:"חבילה"},{n:"גבינה בולגרית",q:150,u:"גרם"}]},
+  {id:"m26",cat:"פלטות",name:"פלטת אנטיפסטי גדולה",price:120,unit:"מגש",ing:[{n:"עגבניות מיובשות",q:2,u:"צנצנת"},{n:"זיתים שחורים",q:2,u:"קופסא"},{n:"גמבה צלויה",q:2,u:"צנצנת"},{n:"פטריות מושקות",q:2,u:"חבילה"},{n:"גבינה בולגרית",q:250,u:"גרם"}]},
+  {id:"m27",cat:"פלטות",name:"פלטת חמוצים",price:140,unit:"מגש",ing:[{n:"זיתים מעורבים",q:1,u:"קופסא"},{n:"מלפפון חמוץ",q:1,u:"צנצנת"},{n:"שיפקוניות",q:1,u:"צנצנת"},{n:"תירס גמדי",q:1,u:"קופסא"},{n:"כרוב כבוש",q:1,u:"צנצנת"}]},
+  // האיטלקיות עם וריאנטים
+  {id:"m30",cat:"האיטלקיות שלנו",name:"פסטה ברוטב שמנת",price:140,unit:"לתבנית",hasVariants:true,
+   ing:[{n:"פסטה",q:1,u:"חבילה"},{n:"שמנת לבישול",q:1,u:"קרטון"},{n:"גבינה מגוררת",q:1,u:"חבילה"},{n:"שום",q:1,u:"ראש"}],
+   variants:[
+     {id:"v1",name:"שמנת פטריות",extraIng:[{n:"פטריות שמפניון",q:1,u:"חבילה"}]},
+     {id:"v2",name:"שמנת פסטו",extraIng:[{n:"פסטו",q:1,u:"צנצנת"},{n:"צנוברים",q:50,u:"גרם"}]},
+     {id:"v3",name:"רוזה",extraIng:[{n:"רוטב עגבניות",q:1,u:"צנצנת"},{n:"בזיליקום",q:1,u:"צרור"}]},
+     {id:"v4",name:"שמנת רגיל",extraIng:[]}
+   ]},
+  {id:"m31",cat:"האיטלקיות שלנו",name:"תפוח אדמה ברוטב שמנת",price:145,unit:"לתבנית",ing:[{n:"תפוחי אדמה",q:1.5,u:"קג"},{n:"שמנת לבישול",q:1,u:"קרטון"},{n:"גבינה מגוררת",q:1,u:"חבילה"},{n:"שום",q:1,u:"ראש"}]},
+  {id:"m32",cat:"האיטלקיות שלנו",name:"רביולי ברוטב שמנת",price:185,unit:"לתבנית",ing:[{n:"רביולי",q:2,u:"חבילה"},{n:"שמנת לבישול",q:1,u:"קרטון"},{n:"גבינה מגוררת",q:1,u:"חבילה"},{n:"שום",q:1,u:"ראש"}]},
+  {id:"m33",cat:"האיטלקיות שלנו",name:"גלילות חציל במילוי גבינות",price:200,unit:"לתבנית (18 יח')",hasVariants:true,
+   ing:[{n:"חציל",q:3,u:"יח'"},{n:"ביצים",q:2,u:"יח'"},{n:"גבינה מגוררת",q:1,u:"חבילה"}],
+   variants:[
+     {id:"gv1",name:"גבינת שמנת ועשבי תיבול",extraIng:[{n:"גבינת שמנת",q:2,u:"גביע"},{n:"עשבי תיבול",q:1,u:"צרור"}]},
+     {id:"gv2",name:"ריקוטה ועגבניות מיובשות",extraIng:[{n:"ריקוטה",q:1,u:"גביע"},{n:"עגבניות מיובשות",q:1,u:"צנצנת"}]},
+     {id:"gv3",name:"ברוטב שמנת",extraIng:[{n:"שמנת לבישול",q:1,u:"קרטון"}]}
+   ]},
+  {id:"m34",cat:"האיטלקיות שלנו",name:"בלינצ'יס שמנת פטריות",price:200,unit:"לתבנית (15 יח')",ing:[{n:"בלינצ'יס",q:1,u:"חבילה"},{n:"פטריות שמפניון",q:1,u:"חבילה"},{n:"שמנת לבישול",q:1,u:"קרטון"},{n:"גבינה מגוררת",q:1,u:"חבילה"}]},
+  {id:"m35",cat:"האיטלקיות שלנו",name:"לזנית גבינה גדולה 25×35",price:150,unit:"לתבנית",hasVariants:true,
+   ing:[{n:"לחם לזניה",q:1,u:"חבילה"},{n:"גבינה מגוררת",q:2,u:"חבילה"},{n:"שמנת לבישול",q:2,u:"קרטון"},{n:"גבינת שמנת",q:1,u:"גביע"}],
+   variants:[
+     {id:"lv1",name:"גבינה ורוטב עגבניות",extraIng:[{n:"רוטב עגבניות",q:1,u:"צנצנת"}]},
+     {id:"lv2",name:"גבינה ופטריות",extraIng:[{n:"פטריות שמפניון",q:1,u:"חבילה"}]},
+     {id:"lv3",name:"גבינה בלבד",extraIng:[]}
+   ]},
+  {id:"m36",cat:"האיטלקיות שלנו",name:"לזנית גבינה קטנה 25×15",price:115,unit:"לתבנית",ing:[{n:"לחם לזניה",q:0.5,u:"חבילה"},{n:"גבינה מגוררת",q:1,u:"חבילה"},{n:"שמנת לבישול",q:1,u:"קרטון"},{n:"רוטב עגבניות",q:1,u:"צנצנת"}]},
+  {id:"m37",cat:"האיטלקיות שלנו",name:"פסטה פנה ברוטב שמנת וערמונים",price:145,unit:"לתבנית",ing:[{n:"פסטה פנה",q:1,u:"חבילה"},{n:"ערמונים",q:1,u:"חבילה"},{n:"שמנת לבישול",q:1,u:"קרטון"},{n:"גבינה מגוררת",q:1,u:"חבילה"}]},
+  // המיומדים
+  {id:"m40",cat:"המיומדים שלנו",name:"ברוסקטה בגיוונים שונים",price:9,unit:"ליחידה",ing:[{n:"לחם",q:1,u:"פרוסה"},{n:"עגבניות שרי",q:1,u:"חבילה"},{n:"בזיליקום",q:1,u:"צרור"}]},
+  {id:"m41",cat:"המיומדים שלנו",name:"שיפודי גבינה וירקות (10 למגש)",price:120,unit:"למגש",ing:[{n:"ביבי מוצרלה",q:1,u:"חבילה"},{n:"עגבניות שרי",q:1,u:"חבילה"},{n:"זיתים שחורים",q:1,u:"קופסא"},{n:"פסטו",q:1,u:"צנצנת"}]},
+  {id:"m43",cat:"המיומדים שלנו",name:"פילה סלומון שלם",price:320,unit:"למגש",ing:[{n:"סלמון",q:1.2,u:"קג"},{n:"לימון",q:3,u:"יח'"},{n:"ירקות עלים",q:1,u:"חבילה"},{n:"שמן זית",q:1,u:"בקבוק"}]},
+  {id:"m47",cat:"המיומדים שלנו",name:"הום פרייז תפוח אדמה ובטטה",price:130,unit:"לתבנית",ing:[{n:"תפוחי אדמה",q:0.75,u:"קג"},{n:"בטטה",q:0.75,u:"קג"},{n:"שמן זית",q:1,u:"בקבוק"}]},
+  {id:"m49",cat:"המיומדים שלנו",name:"מגש שקשוקה 10 ביצים",price:135,unit:"למגש",ing:[{n:"ביצים",q:10,u:"יח'"},{n:"עגבניות",q:5,u:"יח'"},{n:"גמבה",q:2,u:"יח'"},{n:"בצל",q:1,u:"יח'"}]},
+  {id:"m51",cat:"המיומדים שלנו",name:"מגש כרובית בציפוי פריך",price:120,unit:"למגש",ing:[{n:"כרובית",q:1,u:"יח'"},{n:"ביצים",q:3,u:"יח'"},{n:"פירורי לחם",q:1,u:"חבילה"}]},
+  // לחמים
+  {id:"m60",cat:"לחמים ופוקצ'ות",name:"כדורי לחם שום 20 יח'",price:35,unit:"למגש",ing:[{n:"קמח",q:0.5,u:"קג"},{n:"שמרים",q:1,u:"שקית"},{n:"שום",q:2,u:"ראש"}]},
+  {id:"m61",cat:"לחמים ופוקצ'ות",name:"מארז מיני לחמים שום ופסטו 25 יח'",price:50,unit:"למארז",ing:[{n:"קמח",q:0.5,u:"קג"},{n:"שמרים",q:1,u:"שקית"},{n:"שום",q:2,u:"ראש"},{n:"פסטו",q:1,u:"צנצנת"},{n:"שומשום",q:1,u:"חבילה"}]},
+  {id:"m62",cat:"לחמים ופוקצ'ות",name:"פוקצות (מינימום 20 יח')",price:9,unit:"ליחידה",ing:[{n:"קמח",q:0.08,u:"קג"},{n:"שמרים",q:0.05,u:"שקית"},{n:"בצל",q:0.2,u:"יח'"},{n:"גמבה",q:0.1,u:"יח'"}]},
+  // כריכים
+  {id:"m70",cat:"כריכים",name:"כריכון (מינימום 20 יח')",price:9,unit:"ליחידה",ing:[{n:"לחמניות",q:1,u:"יח'"},{n:"גבינת שמנת",q:0.05,u:"גביע"},{n:"ירקות טריים",q:0.1,u:"חבילה"}]},
+  {id:"m71",cat:"כריכים",name:"ג'בטה (מינימום 10 יח')",price:24,unit:"ליחידה",ing:[{n:"לחם ג'בטה",q:1,u:"יח'"},{n:"גבינת שמנת",q:0.1,u:"גביע"},{n:"ירקות טריים",q:0.2,u:"חבילה"}]},
+  {id:"m72",cat:"כריכים",name:"בגט (מינימום 10 יח')",price:22,unit:"ליחידה",ing:[{n:"בגט",q:1,u:"יח'"},{n:"גבינת שמנת",q:0.1,u:"גביע"},{n:"ירקות טריים",q:0.2,u:"חבילה"}]},
+  // פריקסה
+  {id:"m80",cat:"פריקסה וקרואסון",name:"מיני פריקסה (מינימום 30 יח')",price:10,unit:"ליחידה",ing:[{n:"בצק פריקסה",q:1,u:"יח'"},{n:"גבינה בולגרית",q:15,u:"גרם"}]},
+  {id:"m81",cat:"פריקסה וקרואסון",name:"פריקסה בינונית (מינימום 25 יח')",price:13,unit:"ליחידה",ing:[{n:"בצק פריקסה",q:1,u:"יח'"},{n:"גבינה בולגרית",q:25,u:"גרם"}]},
+  {id:"m82",cat:"פריקסה וקרואסון",name:"פריקסה גדול (מינימום 20 יח')",price:16,unit:"ליחידה",ing:[{n:"בצק פריקסה",q:1,u:"יח'"},{n:"גבינה בולגרית",q:40,u:"גרם"}]},
+  {id:"m83",cat:"פריקסה וקרואסון",name:"קרואסון פריך",price:11,unit:"ליחידה",hasVariants:true,
+   ing:[{n:"בצק קרואסון",q:1,u:"יח'"}],
+   variants:[
+     {id:"kv1",name:"גבינה צהובה",extraIng:[{n:"גבינה צהובה",q:20,u:"גרם"}]},
+     {id:"kv2",name:"גבינת שמנת וסלמון",extraIng:[{n:"גבינת שמנת",q:0.1,u:"גביע"},{n:"סלמון",q:30,u:"גרם"}]},
+     {id:"kv3",name:"תרד וגבינה",extraIng:[{n:"תרד",q:30,u:"גרם"},{n:"גבינה מגוררת",q:20,u:"גרם"}]},
+     {id:"kv4",name:"פסטו וגבינה",extraIng:[{n:"פסטו",q:0.1,u:"צנצנת"},{n:"גבינה מגוררת",q:20,u:"גרם"}]}
+   ]},
+  {id:"m85",cat:"פריקסה וקרואסון",name:"מגש סושי טורטיה כ-35 יח'",price:120,unit:"למגש",ing:[{n:"טורטיות",q:5,u:"יח'"},{n:"גבינת שמנת",q:2,u:"גביע"},{n:"סלמון",q:150,u:"גרם"},{n:"ירקות טריים",q:1,u:"חבילה"},{n:"נבטים",q:1,u:"חבילה"}]},
+  // קיש
+  {id:"m90",cat:"קיש ופחזניות",name:"מיני קיש (מינימום 15 יח')",price:9,unit:"ליחידה",hasVariants:true,
+   ing:[{n:"בצק קיש",q:1,u:"יח'"},{n:"ביצים",q:1,u:"יח'"},{n:"שמנת לבישול",q:0.05,u:"קרטון"}],
+   variants:[
+     {id:"qv1",name:"בטטה",extraIng:[{n:"בטטה",q:0.1,u:"יח'"},{n:"גבינה מגוררת",q:15,u:"גרם"}]},
+     {id:"qv2",name:"פטריות",extraIng:[{n:"פטריות שמפניון",q:0.1,u:"חבילה"},{n:"גבינה מגוררת",q:15,u:"גרם"}]},
+     {id:"qv3",name:"תרד",extraIng:[{n:"תרד",q:20,u:"גרם"},{n:"גבינה מגוררת",q:15,u:"גרם"}]},
+     {id:"qv4",name:"כרובית",extraIng:[{n:"כרובית",q:0.1,u:"יח'"},{n:"גבינה מגוררת",q:15,u:"גרם"}]}
+   ]},
+  {id:"m91",cat:"קיש ופחזניות",name:"פחזנית (מינימום 25 יח')",price:8,unit:"ליחידה",ing:[{n:"קמח",q:0.03,u:"קג"},{n:"חמאה",q:0.02,u:"קג"},{n:"ביצים",q:1,u:"יח'"},{n:"שמנת מתוקה",q:0.05,u:"קרטון"}]},
+  // טארטלוטים
+  {id:"m95",cat:"טארטלוטים",name:"מגש ביס טארטלט 40 יח'",price:150,unit:"למגש",ing:[{n:"בצק פריך",q:1,u:"חבילה"},{n:"מילויים שונים",q:1,u:"מנה"}]},
+  {id:"m96",cat:"טארטלוטים",name:"מגש טארטלט 24 יח'",price:140,unit:"למגש",ing:[{n:"בצק פריך",q:1,u:"חבילה"},{n:"מילויים שונים",q:1,u:"מנה"}]},
+  // מרקים
+  {id:"m100",cat:"מרקים",name:"מרק בטטה 3 ליטר",price:125,unit:"3 ליטר",ing:[{n:"בטטה",q:1.5,u:"קג"},{n:"שמנת לבישול",q:1,u:"קרטון"},{n:"בצל",q:2,u:"יח'"},{n:"שום",q:1,u:"ראש"}]},
+  {id:"m101",cat:"מרקים",name:"מרק בטטה 5 ליטר",price:175,unit:"5 ליטר",ing:[{n:"בטטה",q:2.5,u:"קג"},{n:"שמנת לבישול",q:2,u:"קרטון"},{n:"בצל",q:3,u:"יח'"},{n:"שום",q:1,u:"ראש"}]},
+  {id:"m102",cat:"מרקים",name:"מרק אפונה 3 ליטר",price:125,unit:"3 ליטר",ing:[{n:"אפונה",q:1,u:"חבילה"},{n:"שמנת לבישול",q:1,u:"קרטון"},{n:"בצל",q:2,u:"יח'"},{n:"שום",q:1,u:"ראש"}]},
+  {id:"m103",cat:"מרקים",name:"מרק אפונה 5 ליטר",price:175,unit:"5 ליטר",ing:[{n:"אפונה",q:2,u:"חבילה"},{n:"שמנת לבישול",q:2,u:"קרטון"},{n:"בצל",q:3,u:"יח'"},{n:"שום",q:2,u:"ראש"}]},
+  {id:"m104",cat:"מרקים",name:"מרק בצל 3 ליטר",price:125,unit:"3 ליטר",ing:[{n:"בצל",q:1.2,u:"קג"},{n:"גבינה מגוררת",q:1,u:"חבילה"},{n:"חמאה",q:0.1,u:"קג"},{n:"שמנת לבישול",q:1,u:"קרטון"}]},
+  {id:"m105",cat:"מרקים",name:"מרק בצל 5 ליטר",price:175,unit:"5 ליטר",ing:[{n:"בצל",q:2,u:"קג"},{n:"גבינה מגוררת",q:2,u:"חבילה"},{n:"חמאה",q:0.15,u:"קג"},{n:"שמנת לבישול",q:2,u:"קרטון"}]},
+  // מתוקים
+  {id:"m110",cat:"המתוקים שלנו",name:"קינוחי כוסות חלבי (מינימום 15 יח')",price:13,unit:"ליחידה",ing:[{n:"שמנת מתוקה",q:0.1,u:"קרטון"},{n:"גבינת שמנת",q:0.05,u:"גביע"},{n:"עוגיות",q:0.05,u:"חבילה"}]},
+  {id:"m111",cat:"המתוקים שלנו",name:"קינוחי כוסות פרווה (מינימום 15 יח')",price:11,unit:"ליחידה",ing:[{n:"קצפת פרווה",q:0.1,u:"קרטון"},{n:"פירות",q:0.05,u:"קג"},{n:"עוגיות",q:0.05,u:"חבילה"}]},
+  {id:"m113",cat:"המתוקים שלנו",name:"פחזניות מגש 25 יח'",price:140,unit:"למגש",ing:[{n:"קמח",q:0.2,u:"קג"},{n:"חמאה",q:0.1,u:"קג"},{n:"ביצים",q:6,u:"יח'"},{n:"שמנת מתוקה",q:1,u:"קרטון"},{n:"שוקולד",q:1,u:"חבילה"}]},
+  {id:"m114",cat:"המתוקים שלנו",name:"אצבעות פילו אגוזים מגש 25 יח'",price:140,unit:"למגש",ing:[{n:"בצק פילו",q:1,u:"חבילה"},{n:"אגוזי מלך",q:200,u:"גרם"},{n:"סוכר",q:0.1,u:"קג"},{n:"חמאה",q:0.1,u:"קג"}]},
+  {id:"m116",cat:"המתוקים שלנו",name:"חיתוכיות מילפי מגש 15 יח'",price:135,unit:"למגש",ing:[{n:"בצק עלים",q:1,u:"חבילה"},{n:"שמנת מתוקה",q:1,u:"קרטון"},{n:"אבקת סוכר",q:0.1,u:"קג"}]},
+  {id:"m118",cat:"המתוקים שלנו",name:"מיני טארט שקדים ופירות מגש 20 יח'",price:220,unit:"למגש",ing:[{n:"קמח שקדים",q:0.2,u:"קג"},{n:"חמאה",q:0.1,u:"קג"},{n:"שמנת מתוקה",q:1,u:"קרטון"},{n:"פירות עונה",q:0.5,u:"קג"}]},
+  {id:"m120",cat:"המתוקים שלנו",name:"סופלה חלבי (מינימום 15 יח')",price:10,unit:"ליחידה",ing:[{n:"ביצים",q:3,u:"יח'"},{n:"שוקולד",q:1,u:"חבילה"},{n:"גבינת שמנת",q:1,u:"גביע"},{n:"חמאה",q:0.05,u:"קג"}]},
+  {id:"m122",cat:"המתוקים שלנו",name:"מגשי פירות קוטר 25",price:180,unit:"מגש",ing:[{n:"פירות מעורבים",q:1,u:"קג"}]},
+  {id:"m123",cat:"המתוקים שלנו",name:"מגשי פירות קוטר 30",price:240,unit:"מגש",ing:[{n:"פירות מעורבים",q:1.5,u:"קג"}]},
+  {id:"m124",cat:"המתוקים שלנו",name:"מגשי פירות קוטר 35",price:270,unit:"מגש",ing:[{n:"פירות מעורבים",q:2,u:"קג"}]},
+  {id:"m125",cat:"המתוקים שלנו",name:"מגשי פירות קוטר 40",price:300,unit:"מגש",ing:[{n:"פירות מעורבים",q:2.5,u:"קג"}]},
+  {id:"m126",cat:"המתוקים שלנו",name:"סושי שוקולד 6 יח' ברול",price:45,unit:"לרול",ing:[{n:"שוקולד",q:1,u:"חבילה"},{n:"שמנת מתוקה",q:0.5,u:"קרטון"},{n:"עוגיות",q:0.5,u:"חבילה"}]},
+  {id:"m127",cat:"המתוקים שלנו",name:"עוגות שכבות עשירות 25 חיתוכיות",price:200,unit:"למגש",ing:[{n:"קמח",q:0.3,u:"קג"},{n:"ביצים",q:6,u:"יח'"},{n:"שמנת מתוקה",q:2,u:"קרטון"},{n:"סוכר",q:0.2,u:"קג"},{n:"חמאה",q:0.15,u:"קג"}]},
+  {id:"m129",cat:"המתוקים שלנו",name:"אישיות גבינת ריבת חלב (מינימום 15 יח')",price:14,unit:"ליחידה",ing:[{n:"גבינת שמנת",q:0.07,u:"גביע"},{n:"ריבת חלב",q:0.03,u:"צנצנת"},{n:"בצק פריך",q:0.07,u:"חבילה"}]},
+  {id:"m130",cat:"המתוקים שלנו",name:"אישיות שמנת פירורים (מינימום 15 יח')",price:14,unit:"ליחידה",ing:[{n:"שמנת מתוקה",q:0.05,u:"קרטון"},{n:"עוגיות",q:0.05,u:"חבילה"},{n:"פירות",q:0.05,u:"קג"}]},
+];
+
+const DEFAULT_STAPLES = [
+  {id:"st1",name:"מלח",checked:false},{id:"st2",name:"פלפל שחור",checked:false},
+  {id:"st3",name:"כורכום",checked:false},{id:"st4",name:"פפריקה מתוקה",checked:false},
+  {id:"st5",name:"פפריקה חריפה",checked:false},{id:"st6",name:"שמן זית",checked:false},
+  {id:"st7",name:"שמן קנולה",checked:false},{id:"st8",name:"חומץ",checked:false},
+  {id:"st9",name:"סויה",checked:false},{id:"st10",name:"סילאן",checked:false},
+  {id:"st11",name:"דבש",checked:false},{id:"st12",name:"מיונז",checked:false},
+  {id:"st13",name:"חרדל",checked:false},{id:"st14",name:"אבקת שום",checked:false},
+  {id:"st15",name:"אבקת בצל",checked:false},{id:"st16",name:"סוכר לבן",checked:false},
+  {id:"st17",name:"קמח לבן",checked:false},{id:"st18",name:"שמרים",checked:false},
+  {id:"st19",name:"נייר אפייה",checked:false},{id:"st20",name:"נייר כסף",checked:false},
+];
+
+const DEFAULT_DISPOSABLES = [
+  {id:"d1",name:"תבניות אלומיניום A4",checked:false},
+  {id:"d2",name:"תבניות אלומיניום קטנות",checked:false},
+  {id:"d3",name:"תבניות אלומיניום עגולות",checked:false},
+  {id:"d4",name:"כפות הגשה גדולות",checked:false},
+  {id:"d5",name:"כפות הגשה קטנות",checked:false},
+  {id:"d6",name:"צבתות הגשה",checked:false},
+  {id:"d7",name:"צלחות חד פעמי לבן",checked:false},
+  {id:"d8",name:"צלחות חד פעמי שחור",checked:false},
+  {id:"d9",name:"כוסות שתייה",checked:false},
+  {id:"d10",name:"מפיות",checked:false},
+  {id:"d11",name:"שקיות ניילון",checked:false},
+  {id:"d12",name:"קלופ שקוף",checked:false},
+  {id:"d13",name:"גביעי קינוחים",checked:false},
+  {id:"d14",name:"מפל עטיפה",checked:false},
+  {id:"d15",name:"שפדים עץ",checked:false},
+];
+
+const SERVICES_DEF = [
+  {id:'buffet',  icon:'🍽️', label:'עריכת בופה'},
+  {id:'bar',     icon:'🍸', label:'עריכת בר'},
+  {id:'coffee',  icon:'☕', label:'עמדת קפה'},
+  {id:'tables',  icon:'🌸', label:'עריכת שולחנות'},
+  {id:'package', icon:'🎁', label:'מארז'},
+];
+
+// ════════════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════════════
+let M=[], ords=[], reminders=[], staples=[], disposables=[];
+let nI={}, newSvc={}, aC="all", nOId=Date.now();
+let calYear, calMonth, selectedDay=null;
+
+SERVICES_DEF.forEach(s=>newSvc[s.id]={active:false,price:'',note:''});
+
+// ════════════════════════════════════════════════════════════
+// FIREBASE SYNC
+// ════════════════════════════════════════════════════════════
+async function fbSave(col, id, data){
+  try{
+    setSyncing(true);
+    await window._fb.saveDoc(col, id, JSON.parse(JSON.stringify(data)));
+    setSyncing(false);
+  }catch(e){console.warn('fbSave error',e);setSyncing(false);}
+}
+async function fbDel(col, id){
+  try{ await window._fb.delDoc(col, id); }catch(e){console.warn('fbDel error',e);}
+}
+
+function setSyncing(v){
+  const dot=document.getElementById('sync-dot');
+  const lbl=document.getElementById('sync-label');
+  if(dot) dot.className='sync-dot'+(v?' syncing':'');
+  if(lbl) lbl.textContent=v?'מסנכרן...':'מחובר';
+}
+
+// ════════════════════════════════════════════════════════════
+// BOOT
+// ════════════════════════════════════════════════════════════
+window._appReady = async function(){
+  const d = window._initData;
+  // menu
+  M = d.menu.length ? d.menu : DEFAULT_MENU;
+  if(!d.menu.length) DEFAULT_MENU.forEach(item=>fbSave('menu', item.id, item));
+  // orders
+  ords = d.ords;
+  nOId = ords.length ? Math.max(...ords.map(o=>typeof o.id==='number'?o.id:0))+1 : Date.now();
+  // reminders
+  reminders = d.rems;
+  // staples
+  staples = d.staples.length ? d.staples : DEFAULT_STAPLES;
+  if(!d.staples.length) DEFAULT_STAPLES.forEach(s=>fbSave('staples', s.id, s));
+  // disposables
+  disposables = d.disposables.length ? d.disposables : DEFAULT_DISPOSABLES;
+  if(!d.disposables.length) DEFAULT_DISPOSABLES.forEach(s=>fbSave('disposables', s.id, s));
+
+  document.getElementById('loading-screen').style.display='none';
+  document.getElementById('main-app').style.display='block';
+
+  initCal();
+  setInterval(checkReminders, 60000);
+  checkReminders();
+};
+
+// ════════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════════
+function cats(){return[...new Set(M.map(m=>m.cat))];}
+function gp(p,b){
+  document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(e=>e.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active'); b.classList.add('active');
+  ({cal:()=>renderCal(),orders:rO,shop:rSP,menu:rMP,new:rNM})[p]?.();
+}
+function sl(s){return{draft:'טיוטה',pending:'ממתין',sent:'נשלח',confirmed:'מאושר',done:'בוצע'}[s]||s;}
+function sb(s){const c={draft:'bg-g',pending:'bg-g',sent:'bg-b',confirmed:'bg-v',done:'bg-r'};return`<span class="badge ${c[s]||'bg-g'}">${sl(s)}</span>`;}
+function oT(o){
+  let t=o.items.reduce((s,oi)=>{const m=M.find(m=>m.id===oi.menuId);return s+(m?m.price*oi.qty:0);},0);
+  if(o.services) SERVICES_DEF.forEach(s=>{if(o.services[s.id]?.active) t+=parseFloat(o.services[s.id].price)||0;});
+  if(o.delivery?.price) t+=parseFloat(o.delivery.price)||0;
+  return t;
+}
+function fmtQ(q,u){
+  const iU=["יח'","חבילה","קופסא","צנצנת","קרטון","גביע","ראש","צרור","בקבוק","שקית","מנה"];
+  if(iU.includes(u)) return`${Math.ceil(q)} ${u}`;
+  if(u==='גרם') return q>=1000?`${+(q/1000).toFixed(2)} קג`:`${Math.ceil(q)} גרם`;
+  if(u==='קג') return`${+(q).toFixed(2)} קג`;
+  return`${Math.ceil(q)} ${u}`;
+}
+function getEffIng(mi,vid,rem){
+  let ing=[...mi.ing];
+  if(vid&&mi.variants){const v=mi.variants.find(v=>v.id===vid);if(v)ing=[...ing,...v.extraIng];}
+  return ing.filter(i=>!(rem||[]).includes(i.n));
+}
+function calcShop(ordList){
+  const tot={};
+  ordList.forEach(o=>{
+    o.items.forEach(oi=>{
+      const mi=M.find(m=>m.id===oi.menuId);if(!mi)return;
+      getEffIng(mi,oi.variantId,oi.removedIng).forEach(i=>{
+        const k=i.n+'|'+i.u;
+        if(!tot[k])tot[k]={qty:0,unit:i.u,name:i.n,sources:new Set()};
+        tot[k].qty+=i.q*oi.qty;
+        let src=mi.name;if(oi.variantId&&mi.variants){const v=mi.variants.find(v=>v.id===oi.variantId);if(v)src+=` (${v.name})`;}
+        tot[k].sources.add(src);
+      });
+    });
+  });
+  return tot;
+}
+
+// ════════════════════════════════════════════════════════════
+// CALENDAR
+// ════════════════════════════════════════════════════════════
+const HE_MONTHS=['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+function initCal(){
+  const now=new Date(); calYear=now.getFullYear(); calMonth=now.getMonth();
+  document.getElementById('rem-date').value=now.toISOString().slice(0,10);
+  renderCal();
+}
+function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCal();}
+function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCal();}
+function renderCal(){
+  document.getElementById('cal-month-label').textContent=`${HE_MONTHS[calMonth]} ${calYear}`;
+  const grid=document.getElementById('cal-grid');grid.innerHTML='';
+  const first=new Date(calYear,calMonth,1);
+  const startDow=first.getDay();
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const daysInPrev=new Date(calYear,calMonth,0).getDate();
+  const today=new Date();today.setHours(0,0,0,0);
+  for(let i=startDow-1;i>=0;i--) grid.appendChild(makeDayCell(calYear,calMonth-1,daysInPrev-i,true));
+  for(let d=1;d<=daysInMonth;d++){
+    const cell=makeDayCell(calYear,calMonth,d,false);
+    const dt=new Date(calYear,calMonth,d);
+    if(dt.getTime()===today.getTime()) cell.classList.add('today');
+    grid.appendChild(cell);
+  }
+  const total=startDow+daysInMonth;
+  const rem=(7-total%7)%7;
+  for(let d=1;d<=rem;d++) grid.appendChild(makeDayCell(calYear,calMonth+1,d,true));
+}
+function makeDayCell(y,m,d,other){
+  const cell=document.createElement('div');
+  cell.className='cal-day'+(other?' other-month':'');
+  const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const dO=ords.filter(o=>o.eventDate===ds);
+  const dR=reminders.filter(r=>r.date===ds&&!r.done);
+  if(dO.length&&dR.length) cell.classList.add('has-both');
+  else if(dO.length) cell.classList.add('has-orders');
+  else if(dR.length) cell.classList.add('has-reminders');
+  let html=`<div class="cal-num">${d}</div><div class="cal-dot-row">`;
+  dO.forEach(()=>html+=`<div class="cal-dot order"></div>`);
+  dR.forEach(()=>html+=`<div class="cal-dot reminder"></div>`);
+  html+=`</div>`;
+  dO.slice(0,1).forEach(o=>html+=`<div class="cal-mini">📋 ${o.clientName}</div>`);
+  dR.slice(0,1).forEach(r=>html+=`<div class="cal-mini-r">🔔 ${r.text.slice(0,12)}...</div>`);
+  cell.innerHTML=html;
+  cell.onclick=()=>selectDay(ds);
+  return cell;
+}
+function selectDay(ds){
+  selectedDay=ds;
+  const panel=document.getElementById('day-panel');
+  const dO=ords.filter(o=>o.eventDate===ds);
+  const dR=reminders.filter(r=>r.date===ds);
+  if(!dO.length&&!dR.length){panel.style.display='none';return;}
+  let html=`<div class="day-panel"><div style="font-family:var(--serif);font-style:italic;font-size:15px;color:var(--gold4);margin-bottom:10px;">📅 ${ds}</div>`;
+  if(dO.length){
+    html+=`<div style="font-size:12px;font-weight:600;color:var(--gold4);margin-bottom:6px;">הזמנות:</div>`;
+    dO.forEach(o=>{
+      const svc=SERVICES_DEF.filter(s=>o.services?.[s.id]?.active).map(s=>s.icon).join('');
+      html+=`<div class="day-order-item">
+        <div style="font-weight:500;">${o.clientName} ${o.eventTime?'⏰ '+o.eventTime:''} ${svc}</div>
+        <div style="font-size:11px;color:var(--muted);">${o.eventLocation?'📍 '+o.eventLocation:''} | ₪${oT(o).toLocaleString()}</div>
+      </div>`;
+    });
+  }
+  if(dR.length){
+    html+=`<div style="font-size:12px;font-weight:600;color:#185FA5;margin-bottom:6px;margin-top:8px;">תזכורות:</div>`;
+    dR.forEach(r=>{
+      html+=`<div class="day-rem-item">
+        <div><div style="font-weight:500;font-size:13px;">${r.text}</div><div style="font-size:11px;color:var(--muted);">${r.time||''} ${r.done?'✓ בוצע':''}</div></div>
+        <div class="row" style="gap:4px;">
+          ${!r.done?`<button class="btn btns bg-v" onclick="doneRem('${r.id}')">✓</button>`:''}
+          <button class="btn btns btnd" onclick="delRem('${r.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+  }
+  html+=`</div>`;
+  panel.innerHTML=html; panel.style.display='block';
+}
+function addReminder(){
+  const date=document.getElementById('rem-date').value;
+  const time=document.getElementById('rem-time').value;
+  const text=document.getElementById('rem-text').value.trim();
+  if(!date||!text){alert('נא למלא תאריך ותוכן');return;}
+  const r={id:'r'+Date.now(),date,time,text,done:false};
+  reminders.push(r);
+  fbSave('reminders',r.id,r);
+  document.getElementById('rem-text').value='';
+  renderCal();
+  if(selectedDay===date) selectDay(date);
+  toast('🔔 התזכורת נשמרה');
+}
+function doneRem(id){
+  const r=reminders.find(r=>r.id===id);if(r){r.done=true;fbSave('reminders',r.id,r);}
+  renderCal();if(selectedDay)selectDay(selectedDay);
+}
+function delRem(id){
+  reminders=reminders.filter(r=>r.id!==id);fbDel('reminders',id);
+  renderCal();if(selectedDay)selectDay(selectedDay);
+}
+function checkReminders(){
+  const now=new Date();
+  const ds=now.toISOString().slice(0,10);
+  const ts=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  reminders.filter(r=>!r.done&&r.date===ds&&r.time===ts).forEach(r=>{
+    document.getElementById('alert-text').textContent=r.text;
+    document.getElementById('aov').style.display='flex';
+    r.done=true; fbSave('reminders',r.id,r); renderCal();
+    try{
+      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      [0,300,600].forEach(dl=>{
+        const o=ctx.createOscillator(),g=ctx.createGain();
+        o.connect(g);g.connect(ctx.destination);
+        o.frequency.value=880;
+        g.gain.setValueAtTime(0.3,ctx.currentTime+dl/1000);
+        g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+dl/1000+0.3);
+        o.start(ctx.currentTime+dl/1000);o.stop(ctx.currentTime+dl/1000+0.3);
+      });
+    }catch(e){}
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// ORDERS
+// ════════════════════════════════════════════════════════════
+function rO(){
+  const el=document.getElementById('olist');
+  if(!ords.length){el.innerHTML='<div class="empty"><div style="font-size:32px;color:var(--gold)">✦</div><div style="font-family:var(--serif);font-style:italic;font-size:15px;color:var(--gold4);margin-top:8px;">אין הזמנות</div></div>';return;}
+  el.innerHTML=ords.sort((a,b)=>a.eventDate>b.eventDate?1:-1).map(o=>{
+    const tot=oT(o);
+    const svcTags=SERVICES_DEF.filter(s=>o.services?.[s.id]?.active).map(s=>`<span class="extra-tag">${s.icon} ${s.label}</span>`).join('');
+    const delTag=o.delivery?.price>0?`<span class="extra-tag">🚚 ₪${o.delivery.price}</span>`:o.delivery?.price===0?`<span class="extra-tag">🚚 חינם</span>`:'';
+    const prev=o.items.slice(0,2).map(oi=>{const m=M.find(m=>m.id===oi.menuId);if(!m)return'';let n=m.name.slice(0,16);const v=oi.variantId&&m.variants?m.variants.find(v=>v.id===oi.variantId):null;if(v)n+=` (${v.name})`;return n+` ×${oi.qty}`;}).join(' | ')+(o.items.length>2?` +${o.items.length-2}`:'');
+    return`<div class="ocard">
+      <div class="ochead">
+        <div>
+          <div class="ocname">${o.clientName}</div>
+          <div style="font-size:11px;color:var(--gold3);margin-top:1px;">📅 ${o.eventDate} ${o.eventTime?'⏰ '+o.eventTime:''}</div>
+        </div>${sb(o.status)}
+      </div>
+      <div class="ocbody">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${o.eventLocation?'📍 '+o.eventLocation+'<br>':''}${o.eventNotes||''}</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${prev}</div>
+        <div class="row" style="gap:4px;margin-bottom:8px;flex-wrap:wrap;">${svcTags}${delTag}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="octot">₪${tot.toLocaleString()}</div>
+          <div class="row" style="gap:5px;">
+            <button class="btn btns btnwa" onclick="sCnf(${JSON.stringify(o.id)})">📱 אישור</button>
+            <button class="btn btns" onclick="vO(${JSON.stringify(o.id)})">פרטים</button>
+            <button class="btn btns" onclick="cSt(${JSON.stringify(o.id)})">סטטוס</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+// NEW ORDER
+// ════════════════════════════════════════════════════════════
+function renderSvcList(){
+  document.getElementById('services-list').innerHTML=SERVICES_DEF.map(s=>`
+    <div class="service-row ${newSvc[s.id].active?'active':''}" id="sr-${s.id}">
+      <div class="svc-cb" onclick="togSvc('${s.id}')">${newSvc[s.id].active?'✓':''}</div>
+      <div class="svc-body">
+        <div class="svc-label" onclick="togSvc('${s.id}')">${s.icon} ${s.label}</div>
+        <div class="svc-fields">
+          <input type="number" placeholder="מחיר ₪" value="${newSvc[s.id].price}" ${newSvc[s.id].active?'':'disabled'}
+            style="${newSvc[s.id].active?'':'opacity:0.35;'}" oninput="newSvc['${s.id}'].price=this.value;uS()">
+          <input type="text" placeholder="הערה (אופציונלי)" value="${newSvc[s.id].note}" ${newSvc[s.id].active?'':'disabled'}
+            style="${newSvc[s.id].active?'':'opacity:0.35;'}" oninput="newSvc['${s.id}'].note=this.value">
+        </div>
+      </div>
+    </div>`).join('');
+}
+function togSvc(id){newSvc[id].active=!newSvc[id].active;renderSvcList();uS();}
+
+function rNM(){
+  renderSvcList();
+  document.getElementById('cfilt').innerHTML=
+    `<button class="btn btns ${aC==='all'?'btng':''}" onclick="fc('all')">הכל</button>`+
+    cats().map(c=>`<button class="btn btns ${aC===c?'btng':''}" onclick="fc('${c}')">${c}</button>`).join('');
+  const items=aC==='all'?M:M.filter(m=>m.cat===aC);
+  document.getElementById('nmenu').innerHTML=items.map(item=>{
+    const st=nI[item.id]; const qty=st?st.qty:0;
+    const vLbl=st?.variantId&&item.variants?item.variants.find(v=>v.id===st.variantId)?.name:'';
+    return`<div class="mic${qty>0?' hq':''}" id="mc${item.id}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;padding-left:10px;">
+          <span class="ctag">${item.cat}</span>
+          ${item.hasVariants?`<span class="vtag">וריאנטים</span>`:''}
+          <div class="min">${item.name}</div>
+          <div class="mii">${item.ing.map(i=>i.n).join(' · ')}${item.variants?` | טעמים: ${item.variants.map(v=>v.name).join(' / ')}`  :''}</div>
+          ${vLbl?`<div style="font-size:11px;color:#185FA5;margin-top:1px;">✓ נבחר: ${vLbl}</div>`:''}
+        </div>
+        <div style="text-align:left;flex-shrink:0;">
+          <div class="mip">₪${item.price} <span style="font-size:10px;font-weight:400;color:var(--muted);">/${item.unit}</span></div>
+          <div class="qc" style="margin-top:6px;justify-content:flex-end;">
+            <button class="qb" onclick="cQ('${item.id}',-1)">−</button>
+            <span class="qn" id="q${item.id}">${qty}</span>
+            <button class="qb" onclick="cQ('${item.id}',1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  uS(); updateChosenList();
+}
+function fc(c){aC=c;rNM();}
+function cQ(id,d){
+  const cur=nI[id]?.qty||0,nv=Math.max(0,cur+d);
+  if(nv===0){delete nI[id];}
+  else{
+    if(!nI[id]) nI[id]={qty:0,variantId:null,removedIng:[],note:''};
+    nI[id].qty=nv;
+    const item=M.find(m=>m.id===id);
+    if(nv>0&&item?.hasVariants&&!nI[id].variantId) showVarPicker(id);
+  }
+  const el=document.getElementById('q'+id);if(el)el.textContent=nv;
+  const card=document.getElementById('mc'+id);if(card){nv>0?card.classList.add('hq'):card.classList.remove('hq');}
+  uS();updateChosenList();
+}
+function showVarPicker(menuId){
+  const item=M.find(m=>m.id===menuId);if(!item?.variants)return;
+  sMod(`<div>
+    <button class="cbtn" onclick="cMod()">×</button>
+    <div class="mtitle">🎨 בחר טעם — ${item.name}</div>
+    ${item.variants.map(v=>`
+      <button style="display:block;width:100%;text-align:right;padding:10px 14px;border-radius:var(--radsm);border:1.5px solid ${nI[menuId]?.variantId===v.id?'var(--gold)':'var(--border)'};background:${nI[menuId]?.variantId===v.id?'var(--gold3)':'#fff'};margin-bottom:8px;cursor:pointer;font-family:var(--body);" onclick="selVar('${menuId}','${v.id}')">
+        <div style="font-weight:500;">${v.name}</div>
+        ${v.extraIng.length?`<div style="font-size:11px;color:var(--muted);margin-top:2px;">+ ${v.extraIng.map(i=>i.n).join(', ')}</div>`:'<div style="font-size:11px;color:var(--muted);">ללא תוספות</div>'}
+      </button>`).join('')}
+  </div>`);
+}
+function selVar(menuId,vid){
+  if(!nI[menuId]) nI[menuId]={qty:1,variantId:null,removedIng:[],note:''};
+  nI[menuId].variantId=vid; cMod(); rNM();
+}
+function updateChosenList(){
+  const keys=Object.keys(nI).filter(k=>nI[k].qty>0);
+  const cc=document.getElementById('chosen-card');
+  if(!keys.length){cc.style.display='none';return;}
+  cc.style.display='block';
+  document.getElementById('chosen-list').innerHTML=keys.map(k=>{
+    const item=M.find(m=>m.id===k);if(!item)return'';
+    const st=nI[k];
+    const vLbl=st.variantId&&item.variants?item.variants.find(v=>v.id===st.variantId)?.name:'';
+    const rem=st.removedIng||[];
+    return`<div style="background:#fff;border:0.5px solid var(--gold);border-radius:var(--radsm);padding:10px 12px;margin-bottom:7px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:13px;font-weight:500;">${item.name} × ${st.qty}</div>
+          ${vLbl?`<div style="font-size:11px;color:#185FA5;">🎨 ${vLbl}</div>`:''}
+          ${rem.length?`<div style="font-size:11px;color:#E24B4A;">✕ ללא: ${rem.join(', ')}</div>`:''}
+          ${st.note?`<div style="font-size:11px;color:var(--muted);">💬 ${st.note}</div>`:''}
+        </div>
+        <div class="row" style="gap:5px;">
+          ${item.hasVariants?`<button class="btn btns" onclick="showVarPicker('${k}')" style="font-size:11px;">🎨</button>`:''}
+          <button class="btn btns" onclick="showCustomize('${k}')" style="font-size:11px;">✏️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function showCustomize(menuId){
+  const item=M.find(m=>m.id===menuId);if(!item)return;
+  const st=nI[menuId];if(!st)return;
+  const allIng=getEffIng(item,st.variantId,[]);
+  sMod(`<div>
+    <button class="cbtn" onclick="cMod()">×</button>
+    <div class="mtitle">✏️ התאמות אישיות — ${item.name}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">לחץ על רכיב להסרה מהרשימה ומחישוב הקניות:</div>
+    ${allIng.map(i=>{
+      const isR=(st.removedIng||[]).includes(i.n);
+      return`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radsm);margin-bottom:5px;background:${isR?'#FCEBEB':'var(--bg2)'};border:0.5px solid ${isR?'#F09595':'var(--border)'};cursor:pointer;${isR?'text-decoration:line-through;color:var(--muted);':''}" onclick="togIng('${menuId}','${i.n}')">
+        <div style="width:17px;height:17px;border:1.5px solid var(--gold);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;background:${isR?'#E24B4A':'#fff'};color:${isR?'#fff':'var(--gold4)'};">${isR?'✕':'✓'}</div>
+        <span>${i.n} — ${fmtQ(i.q,i.u)}</span>
+      </div>`;
+    }).join('')}
+    <div class="fg" style="margin-top:10px;"><label>הערה ללקוח / לשף</label>
+      <input type="text" id="cust-note" value="${st.note||''}" placeholder="ללא חריף, גלוטן פרי...">
+    </div>
+    <button class="btn btng" style="width:100%;margin-top:6px;" onclick="saveCustomize('${menuId}')">שמור התאמות</button>
+  </div>`);
+}
+function togIng(menuId,ingName){
+  const st=nI[menuId];if(!st)return;
+  if(!st.removedIng) st.removedIng=[];
+  const idx=st.removedIng.indexOf(ingName);
+  if(idx>-1) st.removedIng.splice(idx,1); else st.removedIng.push(ingName);
+  showCustomize(menuId);
+}
+function saveCustomize(menuId){
+  const note=document.getElementById('cust-note')?.value||'';
+  if(nI[menuId]) nI[menuId].note=note;
+  cMod(); updateChosenList(); uS();
+}
+function uS(){
+  const card=document.getElementById('nscard'),keys=Object.keys(nI).filter(k=>nI[k].qty>0);
+  if(!keys.length){card.style.display='none';return;}
+  card.style.display='block';
+  let tot=0;
+  const rows=keys.map(k=>{
+    const m=M.find(m=>m.id===k);if(!m)return'';
+    const s=m.price*nI[k].qty;tot+=s;
+    let lbl=m.name.slice(0,22)+(m.name.length>22?'...':'');
+    const v=nI[k].variantId&&m.variants?m.variants.find(v=>v.id===nI[k].variantId):null;
+    if(v) lbl+=` (${v.name})`;
+    return`<div class="srow"><span>${lbl} × ${nI[k].qty}</span><span>₪${s}</span></div>`;
+  }).join('');
+  let svcRows='';
+  SERVICES_DEF.forEach(s=>{if(newSvc[s.id].active&&newSvc[s.id].price){const p=parseFloat(newSvc[s.id].price)||0;tot+=p;svcRows+=`<div class="srow"><span>${s.icon} ${s.label}</span><span>₪${p}</span></div>`;}});
+  const dp=parseFloat(document.getElementById('delivery-price')?.value)||0;
+  const dn=document.getElementById('delivery-note')?.value||'';
+  tot+=dp;
+  const delRow=`<div class="srow"><span>🚚 משלוח${dn?' — '+dn:''}</span><span>${dp>0?'₪'+dp:'חינם'}</span></div>`;
+  document.getElementById('nsum').innerHTML=`<div class="sbox">${rows}${svcRows}${delRow}<div class="srow stot"><span>סה"כ</span><span>₪${tot.toLocaleString()}</span></div></div>`;
+}
+function svOrd(){
+  const name=document.getElementById('nn').value.trim(),date=document.getElementById('nd').value;
+  if(!name||!date){alert('נא למלא שם לקוח ותאריך');return;}
+  const keys=Object.keys(nI).filter(k=>nI[k].qty>0);
+  if(!keys.length){alert('נא לבחור לפחות פריט אחד');return;}
+  for(const k of keys){
+    const item=M.find(m=>m.id===k);
+    if(item?.hasVariants&&!nI[k].variantId){alert(`נא לבחור טעם עבור: ${item.name}`);showVarPicker(k);return;}
+  }
+  const svcSaved={};
+  SERVICES_DEF.forEach(s=>{svcSaved[s.id]={active:newSvc[s.id].active,price:parseFloat(newSvc[s.id].price)||0,note:newSvc[s.id].note||''};});
+  const dp=parseFloat(document.getElementById('delivery-price').value)||0;
+  const dn=document.getElementById('delivery-note').value||'';
+  const newOrd={
+    id: nOId++,
+    clientName:name,clientPhone:document.getElementById('np').value,
+    clientEmail:document.getElementById('ne').value,eventDate:date,
+    eventTime:document.getElementById('nt').value,
+    eventLocation:document.getElementById('nloc').value,
+    eventNotes:document.getElementById('no').value,status:'draft',
+    services:svcSaved,delivery:{price:dp,note:dn},
+    items:keys.map(k=>({menuId:k,qty:nI[k].qty,variantId:nI[k].variantId||null,removedIng:[...(nI[k].removedIng||[])],note:nI[k].note||''}))
+  };
+  ords.push(newOrd);
+  fbSave('orders', newOrd.id, newOrd);
+  rNew();document.querySelector('.nb').click();renderCal();toast('✦ ההזמנה נשמרה');
+}
+function rNew(){
+  nI={};SERVICES_DEF.forEach(s=>newSvc[s.id]={active:false,price:'',note:''});
+  ['nn','nd','nt','np','nloc','ne','no','delivery-note'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  const dp=document.getElementById('delivery-price');if(dp)dp.value='0';
+  rNM();
+}
+function sndM(m){
+  const name=document.getElementById('nn').value.trim()||'לקוח יקר';
+  const txt=cats().map(c=>`✦ ${c}:\n`+M.filter(i=>i.cat===c).map(i=>{
+    let row=`  • ${i.name} — ₪${i.price} /${i.unit}`;
+    if(i.hasVariants&&i.variants) row+=`\n    טעמים: ${i.variants.map(v=>v.name).join(' / ')}`;
+    return row;
+  }).join('\n')).join('\n\n');
+  if(m==='wa'){const ph=(document.getElementById('np').value||'').replace(/[-\s]/g,'');window.open(`https://wa.me/${ph}?text=${encodeURIComponent(`שלום ${name}!\n\nתפריט Y Sweet 2026:\n\n${txt}\n\nנא לציין פריטים, כמויות וטעמים.\nיעל כהן 050-4940803`)}`);}
+  else window.open(`mailto:${document.getElementById('ne').value}?subject=תפריט Y Sweet 2026&body=${encodeURIComponent(`שלום ${name}!\n\nתפריט Y Sweet 2026:\n\n${txt}\n\nיעל כהן 050-4940803`)}`);
+}
+
+// ════════════════════════════════════════════════════════════
+// SHOPPING
+// ════════════════════════════════════════════════════════════
+function rSP(){
+  document.getElementById('ssel').innerHTML='<option value="all">כל ההזמנות הפעילות</option>'+
+    ords.filter(o=>o.status!=='done').map(o=>`<option value="${o.id}">${o.clientName} — ${o.eventDate}</option>`).join('');
+  rShop();rChkList('staples');rChkList('disposables');
+}
+function rShop(){
+  const v=document.getElementById('ssel').value;
+  const os=v==='all'?ords.filter(o=>o.status!=='done'):ords.filter(o=>String(o.id)===String(v));
+  const tot=calcShop(os);
+  const el=document.getElementById('scon');
+  if(!Object.keys(tot).length){el.innerHTML='<div style="padding:1rem;color:var(--muted);font-size:13px;">אין הזמנות פעילות</div>';return;}
+  el.innerHTML=Object.entries(tot).sort((a,b)=>a[1].name.localeCompare(b[1].name,'he')).map(([,v])=>`
+    <div class="shi">
+      <div style="flex:1;"><div style="font-weight:500;">${v.name}</div><div class="shi-src">${[...v.sources].join(', ')}</div></div>
+      <div class="shi-qty">${fmtQ(v.qty,v.unit)}</div>
+    </div>`).join('');
+}
+function rChkList(type){
+  const arr=type==='staples'?staples:disposables;
+  document.getElementById(type+'-list').innerHTML=arr.map(s=>`
+    <div class="chk-item ${s.checked?'chk':''}" onclick="togChk('${type}','${s.id}')">
+      <div class="chk-cb">${s.checked?'✓':''}</div><span>${s.name}</span>
+    </div>`).join('');
+}
+function togChk(type,id){
+  const arr=type==='staples'?staples:disposables;
+  const s=arr.find(s=>s.id===id);if(s){s.checked=!s.checked;fbSave(type,s.id,s);}
+  rChkList(type);
+}
+function clrList(type){
+  const arr=type==='staples'?staples:disposables;
+  arr.forEach(s=>{s.checked=false;fbSave(type,s.id,s);});
+  rChkList(type);
+}
+function addItem(type){
+  const inp=document.getElementById(type==='staples'?'new-staple':'new-disposable');
+  const name=inp.value.trim();if(!name)return;
+  const arr=type==='staples'?staples:disposables;
+  const newS={id:type[0]+Date.now(),name,checked:false};
+  arr.push(newS);fbSave(type,newS.id,newS);
+  inp.value='';rChkList(type);toast('✦ נוסף');
+}
+function showSendMod(){
+  const v=document.getElementById('ssel').value;
+  const os=v==='all'?ords.filter(o=>o.status!=='done'):ords.filter(o=>String(o.id)===String(v));
+  const tot=calcShop(os);
+  const chkS=staples.filter(s=>s.checked);
+  const chkD=disposables.filter(s=>s.checked);
+  let lines=['✦ רשימת קניות — Y Sweet',''];
+  if(Object.keys(tot).length){
+    lines.push('📦 מוצרים להזמנות:');
+    Object.entries(tot).sort((a,b)=>a[1].name.localeCompare(b[1].name,'he')).forEach(([,v])=>lines.push(`• ${v.name}: ${fmtQ(v.qty,v.unit)}  (${[...v.sources].join(', ')})`));
+  }
+  if(chkS.length){lines.push('');lines.push('🧂 מוצרי יסוד שנגמרו:');chkS.forEach(s=>lines.push(`• ${s.name}`));}
+  if(chkD.length){lines.push('');lines.push('🍴 חד פעמי וציוד שנגמר:');chkD.forEach(s=>lines.push(`• ${s.name}`));}
+  const text=lines.join('\n');
+  sMod(`<div>
+    <button class="cbtn" onclick="cMod()">×</button>
+    <div class="mtitle">📱 תצוגה מקדימה לשליחה</div>
+    <div class="send-preview">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>
+    ${!chkS.length&&!chkD.length?'<div style="font-size:11px;color:var(--muted);margin-top:6px;">💡 אין מוצרים מסומנים ברשימות היסוד</div>':''}
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px;">
+      <button class="btn" onclick="cMod()">ביטול</button>
+      <button class="btn btng btnwa" id="do-send-btn">📱 שלח עכשיו</button>
+    </div>
+  </div>`);
+  setTimeout(()=>{const b=document.getElementById('do-send-btn');if(b)b.onclick=()=>{window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank');cMod();};},50);
+}
+
+// ════════════════════════════════════════════════════════════
+// MENU
+// ════════════════════════════════════════════════════════════
+function rMP(){
+  document.getElementById('mlist').innerHTML=cats().map(c=>`
+    <div style="margin-bottom:1.1rem;">
+      <div class="stitle">${c}</div>
+      ${M.filter(m=>m.cat===c).map(item=>`
+        <div class="mic">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="flex:1;padding-left:10px;">
+              ${item.hasVariants?`<span class="vtag">וריאנטים</span>`:''}
+              <div class="min">${item.name}</div>
+              <div class="mii">
+                ${item.ing.map(i=>`${fmtQ(i.q,i.u)} ${i.n}`).join(' · ')}
+                ${item.hasVariants&&item.variants?`<br><span style="color:#185FA5;">טעמים: ${item.variants.map(v=>v.name).join(' / ')}</span>`:''}
+              </div>
+            </div>
+            <div style="text-align:left;flex-shrink:0;">
+              <div class="mip">₪${item.price} /${item.unit}</div>
+              <div class="row" style="gap:4px;margin-top:5px;justify-content:flex-end;">
+                ${item.hasVariants?`<button class="btn btns" style="background:#E6F1FB;color:#185FA5;border-color:#B5D4F4;" onclick="showEditVariants('${item.id}')">🎨 וריאנטים</button>`:''}
+                <button class="btn btns" onclick="showEditItem('${item.id}')">✏️</button>
+              </div>
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+// ── עריכת וריאנטים ──────────────────────────────────────────
+function showEditVariants(menuId){
+  const item=M.find(m=>m.id===menuId);if(!item?.variants)return;
+  sMod(`<div>
+    <button class="cbtn" onclick="cMod()">×</button>
+    <div class="mtitle">🎨 עריכת וריאנטים — ${item.name}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      רכיבי בסיס: ${item.ing.map(i=>i.n).join(', ')}<br>
+      לכל טעם ניתן להוסיף רכיבים ייחודיים.
+    </div>
+    <div id="variants-editor">
+      ${item.variants.map((v,vi)=>buildVarCard(v,vi,menuId)).join('')}
+    </div>
+    <button class="btn btng" style="width:100%;margin-top:4px;" onclick="addVariantRow('${menuId}')">+ הוסף טעם חדש</button>
+    <div class="row" style="justify-content:flex-end;margin-top:12px;gap:8px;">
+      <button class="btn" onclick="cMod()">סגור</button>
+      <button class="btn btng" onclick="saveVariants('${menuId}')">✦ שמור הכל</button>
+    </div>
+  </div>`);
+}
+function buildVarCard(v,vi,menuId){
+  return`<div class="var-card" id="vc-${v.id}">
+    <div class="var-card-head">
+      <div class="var-card-name">טעם ${vi+1}</div>
+      <button class="btn btns btnd" onclick="delVariant('${v.id}','${menuId}')">🗑</button>
+    </div>
+    <div class="fg"><label>שם הטעם</label><input type="text" id="vname-${v.id}" value="${v.name}"></div>
+    <div class="fg">
+      <label>רכיבים נוספים לטעם זה</label>
+      <div id="ving-${v.id}">
+        ${v.extraIng.length===0?`<div style="font-size:12px;color:var(--muted);padding:5px 0;font-style:italic;">אין רכיבים נוספים</div>`
+          :v.extraIng.map((i,ii)=>`<div class="ing-row">
+            <input type="number" step="0.1" class="iq" value="${i.q}">
+            <input type="text" class="iu" value="${i.u}">
+            <input type="text" value="${i.n}">
+            <button class="di" onclick="this.parentElement.remove()">×</button>
+          </div>`).join('')}
+      </div>
+      <button class="btn btns" style="margin-top:5px;font-size:11px;" onclick="addVarIng('${v.id}')">+ רכיב</button>
+    </div>
+  </div>`;
+}
+function addVarIng(vid){
+  const c=document.getElementById('ving-'+vid);
+  const noIng=c.querySelector('[style*="font-style:italic"]');if(noIng)noIng.remove();
+  const d=document.createElement('div');d.className='ing-row';
+  d.innerHTML=`<input type="number" step="0.1" class="iq" placeholder="כמות"><input type="text" class="iu" placeholder="יחידה"><input type="text" placeholder="שם רכיב"><button class="di" onclick="this.parentElement.remove()">×</button>`;
+  c.appendChild(d);
+}
+function addVariantRow(menuId){
+  const item=M.find(m=>m.id===menuId);if(!item)return;
+  const newId='v'+Date.now();
+  item.variants.push({id:newId,name:'טעם חדש',extraIng:[]});
+  showEditVariants(menuId);
+}
+function delVariant(vid,menuId){
+  const item=M.find(m=>m.id===menuId);if(!item)return;
+  if(item.variants.length<=1){alert('חייב להישאר לפחות טעם אחד');return;}
+  if(!confirm('למחוק טעם זה?'))return;
+  item.variants=item.variants.filter(v=>v.id!==vid);
+  showEditVariants(menuId);
+}
+function saveVariants(menuId){
+  const item=M.find(m=>m.id===menuId);if(!item)return;
+  item.variants.forEach(v=>{
+    const nEl=document.getElementById('vname-'+v.id);if(nEl)v.name=nEl.value.trim()||v.name;
+    const c=document.getElementById('ving-'+v.id);if(!c)return;
+    v.extraIng=[];
+    c.querySelectorAll('.ing-row').forEach(r=>{
+      const ins=r.querySelectorAll('input');if(ins.length<3)return;
+      const q=parseFloat(ins[0].value)||0,u=ins[1].value.trim(),n=ins[2].value.trim();
+      if(n)v.extraIng.push({n,q,u});
+    });
+  });
+  fbSave('menu',item.id,item);
+  cMod();rMP();toast('✦ הוריאנטים נשמרו');
+}
+
+// ── עריכת פריט רגיל ──────────────────────────────────────────
+function showEditItem(id){
+  const item=M.find(m=>m.id===id);if(!item)return;
+  sMod(`<div>
+    <button class="cbtn" onclick="cMod()">×</button>
+    <div class="mtitle">✏️ עריכת פריט</div>
+    <div class="fg"><label>שם</label><input id="ei-n" value="${item.name}"></div>
+    <div class="g2">
+      <div class="fg"><label>קטגוריה</label><input id="ei-c" value="${item.cat}"></div>
+      <div class="fg"><label>מחיר (₪)</label><input id="ei-p" type="number" value="${item.price}"></div>
+    </div>
+    <div class="fg"><label>יחידה</label><input id="ei-u" value="${item.unit}"></div>
+    <div class="fg"><label>רכיבי בסיס</label>
+      <div id="ie">${item.ing.map(i=>`<div class="ing-row">
+        <input type="number" step="0.1" class="iq" value="${i.q}">
+        <input type="text" class="iu" value="${i.u}">
+        <input type="text" value="${i.n}">
+        <button class="di" onclick="this.parentElement.remove()">×</button>
+      </div>`).join('')}</div>
+      <button class="btn btns" style="margin-top:5px;" onclick="aIR()">+ רכיב</button>
+    </div>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px;">
+      <button class="btn btnd btns" onclick="dItem('${id}')">🗑 מחק</button>
+      <button class="btn btng" onclick="sEdit('${id}')">✦ שמור</button>
+    </div>
+  </div>`);
+}
+function aIR(){const d=document.createElement('div');d.className='ing-row';d.innerHTML=`<input type="number" step="0.1" class="iq" placeholder="כמות"><input type="text" class="iu" placeholder="יחידה"><input type="text" placeholder="שם"><button class="di" onclick="this.parentElement.remove()">×</button>`;document.getElementById('ie').appendChild(d);}
+function sEdit(id){
+  const item=M.find(m=>m.id===id);if(!item)return;
+  item.name=document.getElementById('ei-n').value.trim()||item.name;
+  item.cat=document.getElementById('ei-c').value.trim()||item.cat;
+  item.price=parseFloat(document.getElementById('ei-p').value)||item.price;
+  item.unit=document.getElementById('ei-u').value.trim()||item.unit;
+  item.ing=[];
+  document.querySelectorAll('#ie .ing-row').forEach(r=>{
+    const ins=r.querySelectorAll('input');
+    const q=parseFloat(ins[0].value)||0,u=ins[1].value.trim(),n=ins[2].value.trim();
+    if(n)item.ing.push({n,q,u});
+  });
+  fbSave('menu',item.id,item);
+  cMod();rMP();toast('✦ הפריט עודכן');
+}
+function dItem(id){
+  if(!confirm('למחוק פריט זה מהתפריט?'))return;
+  const i=M.findIndex(m=>m.id===id);if(i>-1)M.splice(i,1);
+  fbDel('menu',id);cMod();rMP();
+}
+function showAddItem(){
+  sMod(`<div>
+    <button class="cbtn" onclick="cMod()">×</button>
+    <div class="mtitle">✦ הוספת פריט חדש</div>
+    <div class="fg"><label>שם הפריט</label><input id="ai-n" placeholder="שם המנה"></div>
+    <div class="g2">
+      <div class="fg"><label>קטגוריה</label>
+        <select id="ai-c"><option value="">-- בחר --</option>${cats().map(c=>`<option>${c}</option>`).join('')}<option value="__new">+ חדשה</option></select>
+      </div>
+      <div class="fg"><label>קטגוריה חדשה</label><input id="ai-nc"></div>
+    </div>
+    <div class="g2">
+      <div class="fg"><label>מחיר (₪)</label><input id="ai-p" type="number"></div>
+      <div class="fg"><label>יחידה</label><input id="ai-u" placeholder="למגש..."></div>
+    </div>
+    <div class="fg"><label>האם יש וריאנטים?</label>
+      <select id="ai-hv"><option value="no">לא — פריט רגיל</option><option value="yes">כן — יש טעמים / מגדלים</option></select>
+    </div>
+    <div class="fg"><label>רכיבי בסיס</label>
+      <div id="ni-e"><div class="ing-row">
+        <input type="number" step="0.1" class="iq" placeholder="כמות">
+        <input type="text" class="iu" placeholder="יחידה">
+        <input type="text" placeholder="שם רכיב">
+        <button class="di" onclick="this.parentElement.remove()">×</button>
+      </div></div>
+      <button class="btn btns" style="margin-top:5px;" onclick="aNIR()">+ רכיב</button>
+    </div>
+    <button class="btn btng" style="width:100%;margin-top:10px;" onclick="aItem()">✦ הוסף לתפריט</button>
+  </div>`);
+}
+function aNIR(){const d=document.createElement('div');d.className='ing-row';d.innerHTML=`<input type="number" step="0.1" class="iq" placeholder="כמות"><input type="text" class="iu" placeholder="יחידה"><input type="text" placeholder="שם"><button class="di" onclick="this.parentElement.remove()">×</button>`;document.getElementById('ni-e').appendChild(d);}
+function aItem(){
+  const name=document.getElementById('ai-n').value.trim();
+  const catS=document.getElementById('ai-c').value,catN=document.getElementById('ai-nc').value.trim();
+  const cat=catS==='__new'?catN:catS;
+  const price=parseFloat(document.getElementById('ai-p').value)||0;
+  const unit=document.getElementById('ai-u').value.trim();
+  const hasV=document.getElementById('ai-hv').value==='yes';
+  if(!name||!cat||!price){alert('נא למלא שם, קטגוריה ומחיר');return;}
+  const ing=[];
+  document.querySelectorAll('#ni-e .ing-row').forEach(r=>{
+    const ins=r.querySelectorAll('input');
+    const q=parseFloat(ins[0].value)||0,u=ins[1].value.trim(),n=ins[2].value.trim();
+    if(n)ing.push({n,q,u});
+  });
+  const newItem={id:'m'+Date.now(),cat,name,price,unit,ing};
+  if(hasV){newItem.hasVariants=true;newItem.variants=[{id:'v'+Date.now(),name:'טעם 1',extraIng:[]}];}
+  M.push(newItem);fbSave('menu',newItem.id,newItem);
+  cMod();rMP();
+  toast('✦ הפריט נוסף');
+  if(hasV) setTimeout(()=>showEditVariants(newItem.id),300);
+}
+
+// ════════════════════════════════════════════════════════════
+// ORDER DETAILS
+// ════════════════════════════════════════════════════════════
+function vO(id){
+  const o=ords.find(o=>String(o.id)===String(id));if(!o)return;
+  const ss=['draft','pending','sent','confirmed','done'];
+  const lines=o.items.map(oi=>{
+    const m=M.find(m=>m.id===oi.menuId);if(!m)return'';
+    let lbl=m.name;const v=oi.variantId&&m.variants?m.variants.find(v=>v.id===oi.variantId):null;if(v)lbl+=` (${v.name})`;
+    const rem=oi.removedIng?.length?` — ללא ${oi.removedIng.join(', ')}`:'' ;
+    return`<div class="srow"><span>${lbl.slice(0,26)} × ${oi.qty}${rem}</span><span>₪${m.price*oi.qty}</span></div>`;
+  }).join('');
+  const svcLines=SERVICES_DEF.filter(s=>o.services?.[s.id]?.active).map(s=>`<div class="srow"><span>${s.icon} ${s.label}</span><span>₪${o.services[s.id].price||0}</span></div>`).join('');
+  const delLine=o.delivery?`<div class="srow"><span>🚚 משלוח${o.delivery.note?' — '+o.delivery.note:''}</span><span>${o.delivery.price>0?'₪'+o.delivery.price:'חינם'}</span></div>`:'';
+  sMod(`<div>
+    <button class="cbtn" onclick="cMod()">×</button>
+    <div class="mtitle">הזמנה — ${o.clientName}</div>
+    <div class="ssteps">${ss.map(s=>`<div class="ss ${o.status===s?'cur':ss.indexOf(s)<ss.indexOf(o.status)?'done':''}">${sl(s)}</div>`).join('')}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+      📅 ${o.eventDate} ${o.eventTime?'⏰ '+o.eventTime:''}<br>
+      ${o.eventLocation?'📍 '+o.eventLocation+'<br>':''}
+      📞 ${o.clientPhone||'—'}<br>${o.eventNotes||''}
+    </div>
+    <div class="sbox">${lines}${svcLines}${delLine}<div class="srow stot"><span>סה"כ</span><span>₪${oT(o).toLocaleString()}</span></div></div>
+    <div class="row" style="gap:6px;margin-top:12px;">
+      <button class="btn btns btnwa" onclick="sCnf('${o.id}');cMod()">📱 שלח אישור</button>
+      <button class="btn btns btnml" onclick="sCML('${o.id}');cMod()">✉️ שלח במייל</button>
+    </div>
+  </div>`);
+}
+function sCnf(id){
+  const o=ords.find(o=>String(o.id)===String(id));if(!o)return;
+  const lines=o.items.map(oi=>{
+    const m=M.find(m=>m.id===oi.menuId);if(!m)return'';
+    let lbl=m.name;const v=oi.variantId&&m.variants?m.variants.find(v=>v.id===oi.variantId):null;if(v)lbl+=` — ${v.name}`;
+    let row=`• ${lbl}: ${oi.qty} ${m.unit}`;
+    if(oi.removedIng?.length)row+=` (ללא ${oi.removedIng.join(', ')})`;
+    if(oi.note)row+=` — ${oi.note}`;
+    return row;
+  }).filter(Boolean).join('\n');
+  const svcL=SERVICES_DEF.filter(s=>o.services?.[s.id]?.active).map(s=>`• ${s.icon} ${s.label}: ₪${o.services[s.id].price||0}`).join('\n');
+  const ph=(o.clientPhone||'').replace(/[-\s]/g,'');
+  const msg=`שלום ${o.clientName}!\n\n✦ אישור הזמנה לתאריך ${o.eventDate}${o.eventTime?' ⏰ '+o.eventTime:''}\n${o.eventLocation?'📍 '+o.eventLocation:''}\n\n${lines}${svcL?'\n\nשירותי עריכה:\n'+svcL:''}\n${o.delivery?.price>0?'\n🚚 משלוח: ₪'+o.delivery.price+(o.delivery.note?' — '+o.delivery.note:''):'\n🚚 משלוח: חינם'}\n\nסה"כ: ₪${oT(o).toLocaleString()}\n\nנא לאשר.\nY Sweet — יעל כהן 050-4940803`;
+  window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`,'_blank');
+}
+function sCML(id){
+  const o=ords.find(o=>String(o.id)===String(id));if(!o)return;
+  const lines=o.items.map(oi=>{const m=M.find(m=>m.id===oi.menuId);if(!m)return'';let lbl=m.name;const v=oi.variantId&&m.variants?m.variants.find(v=>v.id===oi.variantId):null;if(v)lbl+=` — ${v.name}`;return`• ${lbl}: ${oi.qty} ${m.unit}`;}).filter(Boolean).join('\n');
+  window.open(`mailto:${o.clientEmail}?subject=אישור הזמנה Y Sweet&body=${encodeURIComponent(`שלום ${o.clientName}!\n\nאישור הזמנה לתאריך ${o.eventDate} ⏰ ${o.eventTime||''}\n📍 ${o.eventLocation||'—'}\n\n${lines}\n\nסה"כ: ₪${oT(o).toLocaleString()}\n\nY Sweet — יעל כהן 050-4940803`)}`,'_blank');
+}
+function cSt(id){
+  const o=ords.find(o=>String(o.id)===String(id));if(!o)return;
+  const ss=['draft','pending','sent','confirmed','done'];
+  sMod(`<div>
+    <button class="cbtn" onclick="cMod()">×</button>
+    <div class="mtitle">שינוי סטטוס — ${o.clientName}</div>
+    ${ss.map(s=>`<button class="btn" style="display:block;width:100%;margin-bottom:7px;text-align:right;${s===o.status?'border-color:var(--gold);color:var(--gold4);background:var(--gold3);':''}" onclick="sSt('${id}','${s}')">${sl(s)}${s===o.status?' ✓':''}</button>`).join('')}
+  </div>`);
+}
+function sSt(id,s){
+  const o=ords.find(o=>String(o.id)===String(id));
+  if(o){o.status=s;fbSave('orders',o.id,o);}
+  cMod();rO();renderCal();
+}
+
+// ════════════════════════════════════════════════════════════
+// MODAL + TOAST
+// ════════════════════════════════════════════════════════════
+function sMod(html){document.getElementById('mbody').innerHTML=html;document.getElementById('modal').style.display='flex';}
+function cMod(e){if(!e||e.target===document.getElementById('modal'))document.getElementById('modal').style.display='none';}
+function toast(msg){
+  const t=document.createElement('div');t.textContent=msg;
+  t.style.cssText='position:fixed;bottom:20px;right:14px;background:linear-gradient(135deg,#C9A84C,#E8C97A);color:#1A1208;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,0.2);';
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.3s';setTimeout(()=>t.remove(),300);},2500);
+}
+</script>
+</body>
+</html>
